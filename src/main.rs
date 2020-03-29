@@ -4,6 +4,7 @@ use rand::Rng;
 use structopt::StructOpt;
 
 use crate::bencode::de::deserialize;
+use crossbeam::queue::SegQueue;
 
 mod bencode;
 
@@ -25,6 +26,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let id = gen_peer_id();
     println!("This is {:02x?}", id);
     println!("announce: {:?}", torrent.get("announce").unwrap().string());
+
+    async_std::task::block_on(async {
+        println!("woah async");
+        async_std::task::spawn(async {
+            println!("time to nest");
+        })
+    });
+
+    let work_queue: async_std::sync::Arc<async_std::sync::Mutex<SegQueue<i32>>> =
+        async_std::sync::Arc::new(async_std::sync::Mutex::new(SegQueue::new()));
+    async_std::task::block_on(async {
+        let q = work_queue.lock().await;
+        for i in 0..100000 {
+            q.push(i)
+        }
+    });
+
+    let counter: async_std::sync::Arc<async_std::sync::Mutex<[u32; 5]>> =
+        async_std::sync::Arc::new(async_std::sync::Mutex::new([0u32; 5]));
+
+    println!("Starting processing");
+    async_std::task::block_on(async move {
+        let mut children = vec![];
+        for i in 0..5i32 {
+            let q = work_queue.clone();
+            let c = counter.clone();
+            children.push(async_std::task::spawn(async move {
+                println!("Starting {}", i);
+                loop {
+                    let x = {
+                        let l = q.lock().await;
+                        match l.pop() {
+                            Ok(x) => x,
+                            _ => {
+                                break;
+                            }
+                        }
+                    };
+                    println!("{}: Found {} {} == {}", i, x, (x % 2), i.abs() % 2);
+                    if x.abs() % 2 != i % 2 {
+                        let l = q.lock().await;
+                        println!("{}: pushing {}", i, x - 1);
+                        l.push(x - 1);
+                    } else {
+                        c.lock().await[i as usize] += 1;
+                    }
+
+                    async_std::task::yield_now().await;
+                }
+                println!("Done {}", i);
+            }));
+        }
+
+        futures::future::join_all(children).await;
+
+        println!("Counter: {:?}", counter.lock().await);
+    });
 
     Ok(())
 }
