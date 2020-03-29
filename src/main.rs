@@ -1,3 +1,7 @@
+use crate::bencode::de::deserialize;
+
+mod bencode;
+
 fn main() {
-    println!("Hello, world!");
+    println!("{:?}", deserialize(b"i32e").unwrap());
 }
