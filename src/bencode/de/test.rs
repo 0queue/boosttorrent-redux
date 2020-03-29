@@ -1,5 +1,6 @@
-use super::*;
 use crate::bencode::compare_bytes_slice;
+
+use super::*;
 
 #[test]
 fn test_parse_integer_literal() {
@@ -15,7 +16,10 @@ fn test_parse_string() {
 
     let val = parse_string(s1.as_mut()).unwrap();
 
-    assert_eq!(val, BVal::String(vec!['s' as u8, 'p' as u8, 'a' as u8, 'm' as u8]));
+    assert_eq!(
+        val,
+        BVal::String(vec!['s' as u8, 'p' as u8, 'a' as u8, 'm' as u8])
+    );
     assert_eq!(0, s1.len());
 }
 
@@ -58,7 +62,13 @@ fn test_parse_list() {
 
     let val1 = parse_list(s1.as_mut()).unwrap();
 
-    assert_eq!(val1, BVal::List(vec![BVal::String(vec!['s' as u8, 'p' as u8, 'a' as u8, 'm' as u8]), BVal::Integer(123)]))
+    assert_eq!(
+        val1,
+        BVal::List(vec![
+            BVal::String(vec!['s' as u8, 'p' as u8, 'a' as u8, 'm' as u8]),
+            BVal::Integer(123)
+        ])
+    )
 }
 
 #[test]
@@ -67,8 +77,14 @@ fn test_parses_dict() {
     let val1 = parse_dict(s1.as_mut()).unwrap();
 
     let mut map = HashMap::new();
-    map.insert(vec!['h' as u8, 'e' as u8, 'l' as u8, 'l' as u8, 'o' as u8], BVal::String(vec!['w' as u8, 'o' as u8, 'r' as u8, 'l' as u8, 'd' as u8]));
-    map.insert(vec!['s' as u8, 'p' as u8, 'a' as u8, 'm' as u8], BVal::Integer(123));
+    map.insert(
+        vec!['h' as u8, 'e' as u8, 'l' as u8, 'l' as u8, 'o' as u8],
+        BVal::String(vec!['w' as u8, 'o' as u8, 'r' as u8, 'l' as u8, 'd' as u8]),
+    );
+    map.insert(
+        vec!['s' as u8, 'p' as u8, 'a' as u8, 'm' as u8],
+        BVal::Integer(123),
+    );
     assert_eq!(val1, BVal::Dict(map));
 }
 
@@ -87,11 +103,32 @@ fn test_compare_string() {
     let vs = vec![8];
     let vl = vec![8, 8, 8];
 
-    assert_eq!(Ordering::Equal, compare_bytes_slice(v1.as_ref(), v1.as_ref()));
-    assert_eq!(Ordering::Less, compare_bytes_slice(v1.as_ref(), v2.as_ref()));
-    assert_eq!(Ordering::Greater, compare_bytes_slice(v2.as_ref(), v1.as_ref()));
-    assert_eq!(Ordering::Less, compare_bytes_slice(v3.as_ref(), v4.as_ref()));
-    assert_eq!(Ordering::Greater, compare_bytes_slice(v4.as_ref(), v3.as_ref()));
-    assert_eq!(Ordering::Less, compare_bytes_slice(vs.as_ref(), vl.as_ref()));
-    assert_eq!(Ordering::Greater, compare_bytes_slice(vl.as_ref(), vs.as_ref()));
+    assert_eq!(
+        Ordering::Equal,
+        compare_bytes_slice(v1.as_ref(), v1.as_ref())
+    );
+    assert_eq!(
+        Ordering::Less,
+        compare_bytes_slice(v1.as_ref(), v2.as_ref())
+    );
+    assert_eq!(
+        Ordering::Greater,
+        compare_bytes_slice(v2.as_ref(), v1.as_ref())
+    );
+    assert_eq!(
+        Ordering::Less,
+        compare_bytes_slice(v3.as_ref(), v4.as_ref())
+    );
+    assert_eq!(
+        Ordering::Greater,
+        compare_bytes_slice(v4.as_ref(), v3.as_ref())
+    );
+    assert_eq!(
+        Ordering::Less,
+        compare_bytes_slice(vs.as_ref(), vl.as_ref())
+    );
+    assert_eq!(
+        Ordering::Greater,
+        compare_bytes_slice(vl.as_ref(), vs.as_ref())
+    );
 }

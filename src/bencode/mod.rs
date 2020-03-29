@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-use std::iter::Peekable;
-use std::slice::IterMut;
-use std::str::FromStr;
-use std::cmp::Ordering;
 use std::cmp;
+use std::cmp::Ordering;
+use std::collections::HashMap;
 
 pub mod de;
 pub mod ser;

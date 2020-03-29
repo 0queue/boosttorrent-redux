@@ -1,9 +1,10 @@
-use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::bencode::{BErr, BVal, compare_bytes_slice};
+use crate::bencode::compare_bytes_slice;
+use crate::bencode::BErr;
+use crate::bencode::BVal;
 
 #[cfg(test)]
 mod test;
@@ -18,7 +19,7 @@ fn parse_val(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
         Some(b'i') => parse_integer(stack),
         Some(b'l') => parse_list(stack),
         Some(b'd') => parse_dict(stack),
-        _ => Err(BErr::InvalidBVal)
+        _ => Err(BErr::InvalidBVal),
     }
 }
 
@@ -34,7 +35,7 @@ fn parse_string(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
         for _ in 0..len {
             match pop_front(stack) {
                 Some(b) => bstring.push(b),
-                None => return Err(BErr::InvalidString)
+                None => return Err(BErr::InvalidString),
             }
         }
         bstring
@@ -91,7 +92,7 @@ fn parse_dict(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
     while stack.len() > 0 && stack[0] != b'e' {
         let key = match parse_string(stack)? {
             BVal::String(s) => s,
-            _ => return Err(BErr::InvalidDict)
+            _ => return Err(BErr::InvalidDict),
         };
         let val = parse_val(stack)?;
 
@@ -99,8 +100,8 @@ fn parse_dict(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
             None => last_key = Some(key.clone()),
             Some(last) => match compare_bytes_slice(&last, &key) {
                 Ordering::Less => last_key = Some(key.clone()),
-                _ => return Err(BErr::InvalidDict)
-            }
+                _ => return Err(BErr::InvalidDict),
+            },
         }
 
         res.insert(key, val);
@@ -119,8 +120,7 @@ fn parse_integer_literal(stack: &mut Vec<u8>) -> Result<u64, BErr> {
         buf.push(stack.remove(0) as char) // valid utf-8 because of range check
     }
 
-    let len = u64::from_str(buf.as_str())
-        .map_err(|_| BErr::InvalidIntegerLiteral)?;
+    let len = u64::from_str(buf.as_str()).map_err(|_| BErr::InvalidIntegerLiteral)?;
 
     Ok(len)
 }

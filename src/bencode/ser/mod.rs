@@ -1,8 +1,9 @@
-use crate::bencode::{BVal, compare_bytes_slice};
+use crate::bencode::{compare_bytes_slice, BVal};
 
 #[cfg(test)]
 mod test;
 
+#[allow(dead_code)]
 pub fn serialize(bval: &BVal) -> Vec<u8> {
     let mut res: Vec<u8> = Vec::new();
 
@@ -12,9 +13,7 @@ pub fn serialize(bval: &BVal) -> Vec<u8> {
             res.push(b':');
             res.append(&mut s.clone());
         }
-        BVal::Integer(i) => {
-            res.append(&mut format!("i{}e", i).as_bytes().to_vec())
-        }
+        BVal::Integer(i) => res.append(&mut format!("i{}e", i).as_bytes().to_vec()),
         BVal::List(l) => {
             res.push(b'l');
             l.into_iter().for_each(|e| {
