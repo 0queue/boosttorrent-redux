@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
-use async_std::sync::{Arc, Mutex};
+use async_std::sync::Arc;
 use crossbeam::queue::SegQueue;
 use flume::Receiver;
 use flume::Sender;
+use futures::StreamExt;
 use rand::Rng;
 use structopt::StructOpt;
 
@@ -35,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (done_tx, done_rx) = flume::unbounded::<i32>();
 
     let work_queue: Arc<SegQueue<i32>> = Arc::new(SegQueue::new());
-    let counter = Arc::new(Mutex::new([0u32; NUM_PEERS]));
+    let (counter_tx, counter_rx) = flume::unbounded::<usize>();
 
     for i in 0..10000 {
         work_queue.push(i)
@@ -45,20 +46,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     async_std::task::block_on(async move {
         let mut children = vec![];
         for i in 0..NUM_PEERS {
-            let c = counter.clone();
             let d = done_tx.clone();
-            children.push(async_std::task::spawn(peer(i, work_queue.clone(), d, c)));
+            children.push(async_std::task::spawn(peer(
+                i,
+                work_queue.clone(),
+                d,
+                counter_tx.clone(),
+            )));
         }
 
+        // seems like senders should be dropped after being distributed
         drop(done_tx);
+        drop(counter_tx);
 
         children.push(async_std::task::spawn(data_writer(done_rx)));
-
+        let counter_handle = async_std::task::spawn(counter(counter_rx));
         futures::future::join_all(children).await;
 
         println!(
             "Counter: {:?} work_queue.len(): {}",
-            counter.lock().await,
+            counter_handle.await,
             work_queue.len()
         );
     });
@@ -79,12 +86,7 @@ fn gen_peer_id() -> [u8; 20] {
     res
 }
 
-async fn peer(
-    i: usize,
-    q: Arc<SegQueue<i32>>,
-    d: Sender<i32>,
-    c: Arc<Mutex<[u32; NUM_PEERS]>>,
-) -> () {
+async fn peer(i: usize, q: Arc<SegQueue<i32>>, d: Sender<i32>, c: Sender<usize>) -> () {
     println!("Starting {}", i);
     loop {
         let x = {
@@ -104,7 +106,7 @@ async fn peer(
             q.push(x - 1);
         } else {
             d.send(x).unwrap();
-            c.lock().await[i as usize] += 1;
+            c.send(i).unwrap();
         }
     }
     println!("Done {}", i);
@@ -124,4 +126,15 @@ async fn data_writer(mut done_rx: Receiver<i32>) {
         }
     }
     println!("Done");
+}
+
+async fn counter(counter_rx: Receiver<usize>) -> [u32; NUM_PEERS] {
+    let mut res = [0u32; NUM_PEERS];
+    counter_rx
+        .for_each(|i| {
+            res[i] += 1;
+            futures::future::ready(())
+        })
+        .await;
+    res
 }
