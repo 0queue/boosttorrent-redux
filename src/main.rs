@@ -64,7 +64,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     };
-                    println!("{}: Found {} {} == {}", i, x, (x % 2), i.abs() % 2);
+                    let sleep_t = (i + 1) * 2;
+                    println!("{}: Found {}. sleeping for {}", i, x, sleep_t);
+                    // tweak from_x here to see clear effects on task distribution
+                    async_std::task::sleep(std::time::Duration::from_millis(sleep_t as u64)).await;
                     if x.abs() % 2 != i % 2 {
                         let l = q.lock().await;
                         println!("{}: pushing {}", i, x - 1);
@@ -72,8 +75,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         c.lock().await[i as usize] += 1;
                     }
-
-                    async_std::task::yield_now().await;
                 }
                 println!("Done {}", i);
             }));
