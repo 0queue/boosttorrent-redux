@@ -31,14 +31,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("woah async");
         async_std::task::spawn(async {
             println!("time to nest");
-        })
+        }).await;
     });
 
     let work_queue: async_std::sync::Arc<async_std::sync::Mutex<SegQueue<i32>>> =
         async_std::sync::Arc::new(async_std::sync::Mutex::new(SegQueue::new()));
+
+    let (done_tx, mut done_rx) = flume::unbounded::<i32>();
+
     async_std::task::block_on(async {
         let q = work_queue.lock().await;
-        for i in 0..100000 {
+        for i in 0..10000 {
             q.push(i)
         }
     });
@@ -52,6 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for i in 0..5i32 {
             let q = work_queue.clone();
             let c = counter.clone();
+            let d = done_tx.clone();
             children.push(async_std::task::spawn(async move {
                 println!("Starting {}", i);
                 loop {
@@ -73,12 +77,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("{}: pushing {}", i, x - 1);
                         l.push(x - 1);
                     } else {
+                        d.send(x).unwrap();
                         c.lock().await[i as usize] += 1;
                     }
                 }
                 println!("Done {}", i);
             }));
         }
+
+        drop(done_tx);
+
+        children.push(async_std::task::spawn(async move {
+            println!("Starting finished work receiver");
+            loop {
+                match done_rx.recv_async().await {
+                    Ok(x) => {
+                        println!("Finished with {}", x);
+                    }
+                    Err(_) => {
+                        println!("all senders disconnected");
+                        break;
+                    }
+                }
+            }
+            println!("Done");
+        }));
 
         futures::future::join_all(children).await;
 

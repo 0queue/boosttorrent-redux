@@ -73,6 +73,7 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "crossbeam",
+ "flume",
  "futures",
  "rand",
  "structopt",
@@ -168,6 +169,16 @@ dependencies = [
  "autocfg",
  "cfg-if",
  "lazy_static",
+]
+
+[[package]]
+name = "flume"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "855e285c3835897065a6ba6f9463b44553eb9f29c7988d692f3d41283b47388b"
+dependencies = [
+ "futures",
+ "spin",
 ]
 
 [[package]]
@@ -577,6 +588,12 @@ name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "strsim"
