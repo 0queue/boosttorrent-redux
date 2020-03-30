@@ -75,6 +75,7 @@ dependencies = [
  "crossbeam",
  "flume",
  "futures",
+ "lazy_static",
  "rand",
  "structopt",
 ]
