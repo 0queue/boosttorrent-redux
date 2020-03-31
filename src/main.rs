@@ -27,18 +27,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let contents = std::fs::read(args.torrent_file_path)?;
 
-    let torrent = deserialize(&contents)?;
+    let torrent = Box::new(deserialize(&contents)?);
 
     let id = gen_peer_id();
     println!("This is {:02x?}", id);
-    println!("announce: {:?}", torrent.get("announce").unwrap().string());
+    println!("announce: {:?}", torrent.get("announce").string());
 
-    let (done_tx, done_rx) = flume::unbounded::<i32>();
+    let (done_tx, done_rx) = flume::unbounded::<usize>();
 
-    let work_queue: Arc<SegQueue<i32>> = Arc::new(SegQueue::new());
+    let work_queue: Arc<SegQueue<usize>> = Arc::new(SegQueue::new());
     let (counter_tx, counter_rx) = flume::unbounded::<usize>();
 
-    for i in 0..10000 {
+    println!("file name: {:?}", torrent.get("info").get("name").string());
+    println!("file length: {:?}", torrent.get("info").get("length"));
+    println!(
+        "piece length: {:?}",
+        torrent.get("info").get("piece length")
+    );
+
+    let piece_hashes = torrent.get("info").get("pieces").bytes();
+
+    println!(
+        "Length of pieces array: {} multiple of 20? {}",
+        piece_hashes.len(),
+        piece_hashes.len() % 20 == 0
+    );
+
+    if piece_hashes.len() % 20 != 0 {
+        panic!("piece hash array length not a multiple of 20");
+    }
+
+    let pieces = torrent
+        .get("info")
+        .get("pieces")
+        .bytes()
+        .chunks(20)
+        .collect::<Vec<_>>();
+
+    for i in random_indices(pieces.len()) {
         work_queue.push(i)
     }
 
@@ -46,11 +72,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     async_std::task::block_on(async move {
         let mut children = vec![];
         for i in 0..NUM_PEERS {
-            let d = done_tx.clone();
             children.push(async_std::task::spawn(peer(
                 i,
                 work_queue.clone(),
-                d,
+                done_tx.clone(),
                 counter_tx.clone(),
             )));
         }
@@ -86,7 +111,16 @@ fn gen_peer_id() -> [u8; 20] {
     res
 }
 
-async fn peer(i: usize, q: Arc<SegQueue<i32>>, d: Sender<i32>, c: Sender<usize>) -> () {
+fn random_indices(up_to: usize) -> Vec<usize> {
+    use rand::seq::SliceRandom;
+
+    let mut rng = rand::thread_rng();
+    let mut indices = (0..up_to).collect::<Vec<_>>();
+    indices.shuffle(&mut rng);
+    indices
+}
+
+async fn peer(i: usize, q: Arc<SegQueue<usize>>, d: Sender<usize>, c: Sender<usize>) -> () {
     println!("Starting {}", i);
     loop {
         let x = {
@@ -97,22 +131,17 @@ async fn peer(i: usize, q: Arc<SegQueue<i32>>, d: Sender<i32>, c: Sender<usize>)
                 }
             }
         };
-        let sleep_t = (i + 1) * 2;
+        let sleep_t = (i + 50) * 3;
         println!("{}: Found {}. sleeping for {}", i, x, sleep_t);
         // tweak from_x here to see clear effects on task distribution
         async_std::task::sleep(std::time::Duration::from_millis(sleep_t as u64)).await;
-        if x.abs() % 2 != (i % 2) as i32 {
-            println!("{}: pushing {}", i, x - 1);
-            q.push(x - 1);
-        } else {
-            d.send(x).unwrap();
-            c.send(i).unwrap();
-        }
+        d.send(x).unwrap();
+        c.send(i).unwrap();
     }
     println!("Done {}", i);
 }
 
-async fn data_writer(mut done_rx: Receiver<i32>) {
+async fn data_writer(mut done_rx: Receiver<usize>) {
     println!("Starting finished work receiver");
     loop {
         match done_rx.recv_async().await {

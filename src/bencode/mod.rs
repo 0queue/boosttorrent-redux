@@ -33,29 +33,37 @@ impl std::fmt::Display for BErr {
 }
 
 impl BVal {
-    pub fn get(&self, key: &str) -> Option<&BVal> {
+    pub fn get(&self, key: &str) -> &BVal {
         if let BVal::Dict(d) = self {
-            return d.get(&key.as_bytes().to_vec());
+            return d.get(&key.as_bytes().to_vec()).expect("Key not found");
         }
 
-        None
+        panic!("Not a Dict")
     }
 
-    pub fn string(&self) -> Option<String> {
+    pub fn string(&self) -> String {
         if let BVal::String(s) = self {
             return match std::str::from_utf8(s) {
-                Ok(utf8) => Some(utf8.to_string()),
+                Ok(utf8) => utf8.to_string(),
                 Err(_) => {
                     let mut res = String::new();
                     for byte in s {
                         res.push_str(&format!("{:02x}", byte));
                     }
-                    Some(res)
+                    res
                 }
             };
         }
 
-        None
+        panic!("Not a string");
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        if let BVal::String(bytes) = self {
+            return bytes;
+        }
+
+        panic!("Not a string");
     }
 }
 
