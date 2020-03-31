@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let contents = std::fs::read(args.torrent_file_path)?;
 
-    let torrent = Box::new(deserialize(&contents)?);
+    let torrent = deserialize(&contents)?;
 
     let id = gen_peer_id();
     println!("This is {:02x?}", id);
@@ -57,14 +57,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("piece hash array length not a multiple of 20");
     }
 
-    let pieces = torrent
+    let hashes = Arc::new(torrent
         .get("info")
         .get("pieces")
         .bytes()
         .chunks(20)
-        .collect::<Vec<_>>();
+        .map(|chunk| {
+            let mut hash = [0u8; 20];
+            hash.copy_from_slice(chunk);
+            hash
+        })
+        .collect::<Vec<_>>());
 
-    for i in random_indices(pieces.len()) {
+    for i in random_indices(hashes.len()) {
         work_queue.push(i)
     }
 
@@ -77,6 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 work_queue.clone(),
                 done_tx.clone(),
                 counter_tx.clone(),
+                hashes.clone(),
             )));
         }
 
@@ -120,7 +126,13 @@ fn random_indices(up_to: usize) -> Vec<usize> {
     indices
 }
 
-async fn peer(i: usize, q: Arc<SegQueue<usize>>, d: Sender<usize>, c: Sender<usize>) -> () {
+async fn peer(
+    i: usize,
+    q: Arc<SegQueue<usize>>,
+    d: Sender<usize>,
+    c: Sender<usize>,
+    hashes: Arc<Vec<[u8; 20]>>,
+) -> () {
     println!("Starting {}", i);
     loop {
         let x = {
@@ -132,7 +144,7 @@ async fn peer(i: usize, q: Arc<SegQueue<usize>>, d: Sender<usize>, c: Sender<usi
             }
         };
         let sleep_t = (i + 50) * 3;
-        println!("{}: Found {}. sleeping for {}", i, x, sleep_t);
+        println!("{}: Found {:?}. sleeping for {}", i, hashes[x], sleep_t);
         // tweak from_x here to see clear effects on task distribution
         async_std::task::sleep(std::time::Duration::from_millis(sleep_t as u64)).await;
         d.send(x).unwrap();
