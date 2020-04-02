@@ -1,5 +1,7 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 
+use async_std::net::{Ipv4Addr, SocketAddrV4};
 use async_std::sync::Arc;
 use crossbeam::queue::SegQueue;
 use flume::Receiver;
@@ -12,6 +14,7 @@ use crate::counter::Counter;
 mod bencode;
 mod counter;
 mod peer;
+mod protocol;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -34,9 +37,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("This is {:02x?}", id);
     println!("announce: {:?}", torrent.get("announce").string());
 
-    let (done_tx, done_rx) = flume::unbounded::<Piece>();
+    let (done_tx, done_rx) = flume::unbounded::<PieceMeta>();
 
-    let work_queue: Arc<SegQueue<Piece>> = Arc::new(SegQueue::new());
+    let work_queue: Arc<SegQueue<PieceMeta>> = Arc::new(SegQueue::new());
     let (counter, counter_tx) = Counter::new();
 
     println!("file name: {:?}", torrent.get("info").get("name").string());
@@ -67,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|(index, chunk)| {
             let mut hash = [0u8; 20];
             hash.copy_from_slice(chunk);
-            Piece { index, hash }
+            PieceMeta { index, hash }
         })
         .collect::<Vec<_>>();
 
@@ -85,17 +88,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Starting processing");
     async_std::task::block_on(async move {
-
         // TODO:
         //  - tcp time, try to abstract that a bit into messages
         //  - Pipelining in peers?
 
-        let addresses = (0..10).rev().collect::<Vec<_>>();
+        let addresses = vec![SocketAddrV4::new(
+            Ipv4Addr::from_str("127.0.0.1").unwrap(),
+            8080,
+        )];
+
         let peers_handle = async_std::task::spawn(peer::async_std_spawner(
             addresses,
             work_queue.clone(),
             done_tx,
-            counter_tx));
+            counter_tx,
+            id,
+        ));
 
         let writer_handle = async_std::task::spawn(data_writer(done_rx));
         let counter_handle = async_std::task::spawn(counter.start());
@@ -128,12 +136,12 @@ fn gen_peer_id() -> [u8; 20] {
 }
 
 #[derive(Debug)]
-pub struct Piece {
+pub struct PieceMeta {
     pub index: usize,
     pub hash: [u8; 20],
 }
 
-async fn data_writer(mut done_rx: Receiver<Piece>) {
+async fn data_writer(mut done_rx: Receiver<PieceMeta>) {
     println!("Starting finished work receiver");
     loop {
         match done_rx.recv_async().await {
