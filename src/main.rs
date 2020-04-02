@@ -8,7 +8,6 @@ use structopt::StructOpt;
 
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
-use crate::peer::Peer;
 
 mod bencode;
 mod counter;
@@ -86,27 +85,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Starting processing");
     async_std::task::block_on(async move {
-        let mut children = vec![];
-        for i in 0..NUM_PEERS {
-            let peer = Peer {
-                address: i,
-                work_queue: work_queue.clone(),
-                done_channel: done_tx.clone(),
-                counter_channel: counter_tx.clone(),
-            };
 
-            children.push(async_std::task::spawn(peer.start()));
-        }
+        // TODO:
+        //  - tcp time, try to abstract that a bit into messages
+        //  - Pipelining in peers?
 
-        // seems like senders should be dropped after being distributed
-        drop(done_tx);
-        drop(counter_tx);
+        let addresses = (0..10).rev().collect::<Vec<_>>();
+        let peers_handle = async_std::task::spawn(peer::async_std_spawner(
+            addresses,
+            work_queue.clone(),
+            done_tx,
+            counter_tx));
 
         let writer_handle = async_std::task::spawn(data_writer(done_rx));
         let counter_handle = async_std::task::spawn(counter.start());
 
-        futures::future::join_all(children).await;
+        // futures::future::join_all(children).await;
         writer_handle.await;
+        peers_handle.await;
 
         println!(
             "Counter: {:#?}\nwork_queue.len(): {}",
