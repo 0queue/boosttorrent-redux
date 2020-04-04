@@ -1,8 +1,10 @@
 use async_std::io::prelude::WriteExt;
-use async_std::net::TcpStream;
+use async_std::net::{SocketAddrV4, TcpStream};
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
+use flume::Sender;
 use futures::AsyncReadExt;
+use futures::io::WriteHalf;
 
 pub const PROTOCOL: &[u8; 20] = b"\x19Bittorrent protocol";
 
@@ -48,7 +50,7 @@ impl Message {
 
         let length = BigEndian::read_u32(&prefix[1..]);
 
-        let mut body= vec![0u8; length as usize];
+        let mut body = vec![0u8; length as usize];
         stream.read_exact(&mut body).await.map_err(|_| ())?;
 
         let msg = match prefix[0] {
@@ -63,10 +65,10 @@ impl Message {
                 begin: BigEndian::read_u32(&body[4..8]),
                 length: BigEndian::read_u32(&body[8..12]),
             }),
-            7 => Message::Piece(BlockResponse{
+            7 => Message::Piece(BlockResponse {
                 index: BigEndian::read_u32(&body[0..4]),
                 begin: BigEndian::read_u32(&body[4..8]),
-                data: Vec::from(&body[8..])
+                data: Vec::from(&body[8..]),
             }),
             8 => Message::Cancel(BlockRequest {
                 index: BigEndian::read_u32(&body[0..4]),
@@ -79,33 +81,68 @@ impl Message {
         Ok(msg)
     }
 
-    pub async fn send(&self, stream: &mut TcpStream) -> Result<(), ()> {
-        let mut length = [0u8; 4];
-
-        match self {
+    pub async fn send(&self, stream: &mut WriteHalf<TcpStream>) -> Result<(), ()> {
+        let buf = match self {
             Message::Choke => {
-                stream.write_all(&[0u8; 1]).await.map_err(|_| ())?;
-                BigEndian::write_u32(&length, 0);
-                stream.write_all(&length).await.map_err(|_| ())?;
-            },
-            Message::Unchoke => {},
-            Message::Interested => {},
-            Message::NotInterested => {},
-            Message::Have(_) => {},
-            Message::Bitfield(_) => {},
-            Message::Request(_) => {},
-            Message::Piece(_) => {},
-            Message::Cancel(_) => {},
+                prepare_buf(0, 0)
+            }
+            Message::Unchoke => prepare_buf(0, 1),
+            Message::Interested => prepare_buf(0, 2),
+            Message::NotInterested => prepare_buf(0, 3),
+            Message::Have(idx) => {
+                let mut buf = prepare_buf(4, 4);
+                BigEndian::write_u32(&mut buf[5..], *idx);
+                buf
+            }
+            Message::Bitfield(v) => {
+                let payload = v.to_bytes();
+                let mut buf = prepare_buf(payload.len() as u32, 5);
+                buf[5..].copy_from_slice(&payload);
+                buf
+            }
+            Message::Request(block_req) => {
+                let mut buf = prepare_buf(4 * 3, 6);
+                BigEndian::write_u32(&mut buf[5..], block_req.index);
+                BigEndian::write_u32(&mut buf[9..], block_req.begin);
+                BigEndian::write_u32(&mut buf[13..], block_req.length);
+                buf
+            }
+            Message::Piece(block_resp) => {
+                let mut buf = prepare_buf((4 + 4 + block_resp.data.len()) as u32, 7);
+                BigEndian::write_u32(&mut buf[5..], block_resp.index);
+                BigEndian::write_u32(&mut buf[9..], block_resp.begin);
+                buf[13..].copy_from_slice(&block_resp.data);
+                buf
+            }
+            Message::Cancel(block_req) => {
+                let mut buf = prepare_buf(4 * 3, 8);
+                BigEndian::write_u32(&mut buf[5..], block_req.index);
+                BigEndian::write_u32(&mut buf[9..], block_req.begin);
+                BigEndian::write_u32(&mut buf[13..], block_req.length);
+                buf
+            }
         };
 
-        Ok(())
+        stream.write_all(&buf).await.map_err(|_| ())
     }
+}
+
+fn prepare_buf(payload_length: u32, msg_type: u8) -> Vec<u8> {
+    if payload_length == 0 {
+        unimplemented!("keep-alives not supported yet");
+    }
+
+    let mut res = vec![0u8; 4 + 1 + payload_length as usize];
+    BigEndian::write_u32(&mut res[0..4], payload_length);
+    res[5] = msg_type;
+
+    res
 }
 
 pub(crate) async fn handshake(
     stream: &mut TcpStream,
     id: &[u8; 20],
-    file_hash: &[u8; 20],
+    _file_hash: &[u8; 20],
 ) -> Result<(), ()> {
     let err = |_| ();
 

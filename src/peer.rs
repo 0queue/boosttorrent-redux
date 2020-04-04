@@ -7,12 +7,16 @@ use async_std::net::SocketAddrV4;
 use async_std::net::TcpStream;
 use async_std::sync::Arc;
 use crossbeam::queue::SegQueue;
+use flume::Receiver;
 use flume::Sender;
-use futures::{AsyncWriteExt, TryFutureExt};
+use futures::AsyncReadExt;
+use futures::AsyncWriteExt;
+use futures::TryFutureExt;
 
 use crate::NUM_PEERS;
 use crate::PieceMeta;
 use crate::protocol::handshake;
+use crate::protocol::Message;
 
 pub struct Peer {
     pub address: SocketAddrV4,
