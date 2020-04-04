@@ -14,7 +14,6 @@ use crate::counter::Counter;
 mod bencode;
 mod counter;
 mod peer;
-mod protocol;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -89,13 +88,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting processing");
     async_std::task::block_on(async move {
         // TODO:
-        //  - tcp time, try to abstract that a bit into messages
         //  - Pipelining in peers?
 
-        let addresses = vec![SocketAddrV4::new(
-            Ipv4Addr::from_str("127.0.0.1").unwrap(),
-            8080,
-        )];
+        let addresses = vec![
+            SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
+            SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
+        ];
 
         let peers_handle = async_std::task::spawn(peer::async_std_spawner(
             addresses,
@@ -108,7 +106,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let writer_handle = async_std::task::spawn(data_writer(done_rx));
         let counter_handle = async_std::task::spawn(counter.start());
 
-        // futures::future::join_all(children).await;
         writer_handle.await;
         peers_handle.await;
 

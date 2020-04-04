@@ -1,10 +1,10 @@
 use async_std::io::prelude::WriteExt;
-use async_std::net::{SocketAddrV4, TcpStream};
+use async_std::net::{TcpStream};
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-use flume::Sender;
+
 use futures::AsyncReadExt;
-use futures::io::WriteHalf;
+use futures::io::{ReadHalf, WriteHalf};
 
 pub const PROTOCOL: &[u8; 20] = b"\x19Bittorrent protocol";
 
@@ -44,7 +44,7 @@ pub struct BlockResponse {
 }
 
 impl Message {
-    pub async fn from(stream: &mut TcpStream) -> Result<Message, ()> {
+    pub async fn from(stream: &mut ReadHalf<TcpStream>) -> Result<Message, ()> {
         let mut prefix = [0u8; 5];
         stream.read_exact(&mut prefix).await.map_err(|_| ())?;
 
@@ -83,9 +83,7 @@ impl Message {
 
     pub async fn send(&self, stream: &mut WriteHalf<TcpStream>) -> Result<(), ()> {
         let buf = match self {
-            Message::Choke => {
-                prepare_buf(0, 0)
-            }
+            Message::Choke => prepare_buf(0, 0),
             Message::Unchoke => prepare_buf(0, 1),
             Message::Interested => prepare_buf(0, 2),
             Message::NotInterested => prepare_buf(0, 3),
@@ -156,7 +154,7 @@ pub(crate) async fn handshake(
     let mut buf = [0u8; 20 + 8 + 20 + 20];
     stream.read_exact(&mut buf).await.map_err(err)?;
 
-    let (protocol, flags, their_hash, their_id) =
+    let (protocol, flags, _their_hash, _their_id) =
         (&buf[0..20], &buf[20..28], &buf[28..48], &buf[48..68]);
 
     if protocol != PROTOCOL {

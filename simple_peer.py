@@ -1,6 +1,7 @@
 #!/bin/env python3
 
 import socket
+import sys
 
 
 def main(port=8080):
@@ -66,4 +67,9 @@ def recv_all(buf_size: int, conn: socket) -> bytes:
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 2:
+        print("Wrong number of args")
+        exit(1)
+
+    port = sys.argv[1]
+    main(int(port))
