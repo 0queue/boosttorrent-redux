@@ -9,12 +9,12 @@ use futures::AsyncReadExt;
 use crate::NUM_PEERS;
 use crate::peer::process::InternalId;
 use crate::peer::process::PeerProcessor;
+use crate::peer::protocol::receiver;
+use crate::peer::protocol::sender;
 use crate::PieceMeta;
 
 mod process;
 mod protocol;
-mod recv;
-mod send;
 
 pub async fn async_std_spawner(
     mut addresses: Vec<SocketAddrV4>,
@@ -97,7 +97,7 @@ async fn spawn(
         msg_rx: recv_msg_rx,
     };
 
-    async_std::task::spawn(send::sender(stream_tx, send_msg_rx));
-    async_std::task::spawn(recv::receiver(stream_rx, recv_msg_tx));
+    async_std::task::spawn(sender(stream_tx, send_msg_rx));
+    async_std::task::spawn(receiver(stream_rx, recv_msg_tx));
     Ok(async_std::task::spawn(processor.start()))
 }

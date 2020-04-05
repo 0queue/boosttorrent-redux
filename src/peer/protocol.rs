@@ -2,6 +2,7 @@ use async_std::io::prelude::WriteExt;
 use async_std::net::TcpStream;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
+use flume::{Receiver, Sender};
 use futures::AsyncReadExt;
 use futures::io::{ReadHalf, WriteHalf};
 
@@ -169,4 +170,30 @@ pub(crate) async fn handshake(
     // TODO check id
 
     Ok(())
+}
+
+pub async fn sender(mut stream: WriteHalf<TcpStream>, mut msg_rx: Receiver<Message>) {
+    loop {
+        let msg = match msg_rx.recv_async().await {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        if let Err(_) = msg.send(&mut stream).await {
+            return;
+        }
+    }
+}
+
+pub async fn receiver(mut stream: ReadHalf<TcpStream>, msg_tx: Sender<Message>) {
+    loop {
+        let msg = match Message::from(&mut stream).await {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        if let Err(_) = msg_tx.send(msg) {
+            return;
+        }
+    }
 }
