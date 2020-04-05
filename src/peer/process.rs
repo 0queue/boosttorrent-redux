@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
+use bit_vec::BitVec;
 use crossbeam::queue::SegQueue;
 use flume::Receiver;
 use flume::Sender;
@@ -26,12 +27,34 @@ impl PeerProcessor {
     pub async fn start(self) -> Result<InternalId, InternalId> {
         println!("Starting {}", self.id);
         let mut self_counter = 0u32;
+        let mut bitfield: Option<BitVec> = None;
+        let mut choked = true;
+        let mut interested = false;
 
         loop {
             let piece = match self.work_queue.pop() {
                 Ok(p) => p,
                 Err(_) => break,
             };
+
+            // TODO split piece into block, request all blocks once not choked
+            // TODO blah gotta move some state around
+            let incoming_msgs = self.msg_rx.drain().collect::<Vec<_>>();
+            for msg in incoming_msgs {
+                match msg {
+                    Message::Choke => choked = true,
+                    Message::Unchoke => choked = false,
+                    Message::Interested => interested = true,
+                    Message::NotInterested => interested = false,
+                    Message::Have(_) => {}
+                    Message::Bitfield(b) => {
+                        bitfield.replace(b);
+                    }
+                    Message::Request(_) => {}
+                    Message::Piece(_) => {}
+                    Message::Cancel(_) => {}
+                };
+            }
 
             {
                 // fake work

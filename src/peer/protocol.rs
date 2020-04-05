@@ -2,9 +2,11 @@ use async_std::io::prelude::WriteExt;
 use async_std::net::TcpStream;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-use flume::{Receiver, Sender};
+use flume::Receiver;
+use flume::Sender;
 use futures::AsyncReadExt;
-use futures::io::{ReadHalf, WriteHalf};
+use futures::io::ReadHalf;
+use futures::io::WriteHalf;
 
 pub const PROTOCOL: &[u8; 20] = b"\x19Bittorrent protocol";
 

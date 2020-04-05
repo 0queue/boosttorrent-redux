@@ -1,19 +1,23 @@
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 use async_std::net::{Ipv4Addr, SocketAddrV4};
 use async_std::sync::Arc;
 use crossbeam::queue::SegQueue;
 use flume::Receiver;
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_encode};
 use rand::Rng;
 use structopt::StructOpt;
 
+use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
 
 mod bencode;
 mod counter;
 mod peer;
+mod tracker;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -34,7 +38,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let id = gen_peer_id();
     println!("This is {:02x?}", id);
-    println!("announce: {:?}", torrent.get("announce").string());
+
+    {
+        // tracker things
+        tracker::announce(&torrent, &id, 6881, tracker::Event::Started);
+        std::thread::sleep(Duration::from_secs(5));
+        tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped);
+    }
 
     let (done_tx, done_rx) = flume::unbounded::<PieceMeta>();
 
@@ -43,10 +53,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("file name: {:?}", torrent.get("info").get("name").string());
     println!("file length: {:?}", torrent.get("info").get("length"));
-    println!(
-        "piece length: {:?}",
-        torrent.get("info").get("piece length")
-    );
+    let piece_length = torrent.get("info").get("piece length").integer();
+    println!("piece length: {:?}", piece_length);
 
     let piece_hashes = torrent.get("info").get("pieces").bytes();
 
@@ -69,7 +77,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|(index, chunk)| {
             let mut hash = [0u8; 20];
             hash.copy_from_slice(chunk);
-            PieceMeta { index, hash }
+            PieceMeta {
+                index,
+                hash,
+                length: piece_length as usize,
+            }
         })
         .collect::<Vec<_>>();
 
@@ -91,8 +103,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //  - Pipelining in peers?
 
         let addresses = vec![
-            SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
-            SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
+            // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
+            // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
         ];
 
         let peers_handle = async_std::task::spawn(peer::async_std_spawner(
@@ -136,6 +148,7 @@ fn gen_peer_id() -> [u8; 20] {
 pub struct PieceMeta {
     pub index: usize,
     pub hash: [u8; 20],
+    pub length: usize,
 }
 
 async fn data_writer(mut done_rx: Receiver<PieceMeta>) {

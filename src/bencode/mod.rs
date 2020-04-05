@@ -33,6 +33,10 @@ impl std::fmt::Display for BErr {
 }
 
 impl BVal {
+    pub fn serialize(&self) -> Vec<u8> {
+        ser::serialize(self)
+    }
+
     pub fn get(&self, key: &str) -> &BVal {
         if let BVal::Dict(d) = self {
             return d.get(&key.as_bytes().to_vec()).expect("Key not found");
@@ -64,6 +68,14 @@ impl BVal {
         }
 
         panic!("Not a string");
+    }
+
+    pub fn integer(&self) -> i64 {
+        if let BVal::Integer(i) = self {
+            return *i;
+        }
+
+        panic!("Not an integer");
     }
 }
 
