@@ -16,7 +16,6 @@ mod protocol;
 mod recv;
 mod send;
 
-// not sure how to disconnect this from async_std
 pub async fn async_std_spawner(
     mut addresses: Vec<SocketAddrV4>,
     work_queue: Arc<SegQueue<PieceMeta>>,
@@ -25,51 +24,44 @@ pub async fn async_std_spawner(
     id: [u8; 20],
 ) {
     let mut active_peers = Vec::new();
+    let mut target_num_peers = NUM_PEERS;
 
-    // TODO this doesn't actually handle connections that fail to start very well
-
-    // initial set of peers
-    for _ in 0..NUM_PEERS {
-        if let Some(address) = addresses.pop() {
-            if let Some(handle) = spawn(
-                address,
-                work_queue.clone(),
-                done_channel.clone(),
-                counter_channel.clone(),
-                &id,
-                &[0u8; 20],
-            )
-                .await
-            {
-                active_peers.push(handle);
-            }
-        }
-    }
-
-    while active_peers.len() > 0 {
-        let (res, _, others) = futures::future::select_all(active_peers).await;
-        active_peers = others;
-        if let Result::Err(address) = res {
-            println!("Peer died: {}", address);
+    loop {
+        while active_peers.len() < target_num_peers {
             if let Some(address) = addresses.pop() {
-                if let Some(handle) = spawn(
+                let fut = spawn(
                     address,
                     work_queue.clone(),
                     done_channel.clone(),
                     counter_channel.clone(),
                     &id,
                     &[0u8; 20],
-                )
-                    .await
-                {
-                    active_peers.push(handle);
+                );
+
+                match fut.await {
+                    Ok(handle) => {
+                        println!("Spawned {}", address);
+                        active_peers.push(handle);
+                    }
+                    Err(msg) => println!("Error spawning {}", msg),
                 }
+            } else {
+                // no more address to try
+                break;
             }
         }
-    }
 
-    // TODO if the work queue is not empty there are no more active peers...
-    //   talk to the tracker and/or return a negative result
+        if active_peers.len() == 0 {
+            break;
+        }
+
+        let (res, _, others) = futures::future::select_all(active_peers).await;
+        active_peers = others;
+        match res {
+            Result::Err(address) => println!("Peer died {}", address),
+            Result::Ok(_) => target_num_peers -= 1,
+        }
+    }
 
     println!("Done spawning peers");
 }
@@ -82,14 +74,14 @@ async fn spawn(
     counter_channel: Sender<SocketAddrV4>,
     our_id: &[u8; 20],
     file_hash: &[u8; 20],
-) -> Option<JoinHandle<Result<InternalId, InternalId>>> {
+) -> Result<JoinHandle<Result<InternalId, InternalId>>, &'static str> {
     let mut stream = match TcpStream::connect(address).await {
         Ok(stream) => stream,
-        Err(_) => return None,
+        Err(_) => return Err("Failed to connect"),
     };
 
     if let Err(_) = protocol::handshake(&mut stream, &our_id, file_hash).await {
-        return None;
+        return Err("Handshake failed");
     }
 
     let (stream_rx, stream_tx) = stream.split();
@@ -107,5 +99,5 @@ async fn spawn(
 
     async_std::task::spawn(send::sender(stream_tx, send_msg_rx));
     async_std::task::spawn(recv::receiver(stream_rx, recv_msg_tx));
-    Some(async_std::task::spawn(processor.start()))
+    Ok(async_std::task::spawn(processor.start()))
 }

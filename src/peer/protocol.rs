@@ -1,8 +1,7 @@
 use async_std::io::prelude::WriteExt;
-use async_std::net::{TcpStream};
+use async_std::net::TcpStream;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-
 use futures::AsyncReadExt;
 use futures::io::{ReadHalf, WriteHalf};
 
