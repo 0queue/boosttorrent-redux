@@ -7,6 +7,7 @@ use flume::Sender;
 use futures::AsyncReadExt;
 
 use crate::NUM_PEERS;
+pub use crate::peer::process::DownloadedPiece;
 use crate::peer::process::InternalId;
 use crate::peer::process::PeerProcessor;
 use crate::peer::protocol::receiver;
@@ -19,9 +20,10 @@ mod protocol;
 pub async fn async_std_spawner(
     mut addresses: Vec<SocketAddrV4>,
     work_queue: Arc<SegQueue<PieceMeta>>,
-    done_channel: Sender<PieceMeta>,
+    done_channel: Sender<DownloadedPiece>,
     counter_channel: Sender<SocketAddrV4>,
     id: [u8; 20],
+    file_hash: [u8; 20]
 ) {
     let mut active_peers = Vec::new();
     let mut target_num_peers = NUM_PEERS;
@@ -36,16 +38,16 @@ pub async fn async_std_spawner(
                     done_channel.clone(),
                     counter_channel.clone(),
                     &id,
-                    &[0u8; 20],
+                    &file_hash,
                     total_num_pieces,
                 );
 
                 match fut.await {
                     Ok(handle) => {
-                        println!("Spawned {}", address);
+                        println!("{}: Spawned", address);
                         active_peers.push(handle);
                     }
-                    Err(msg) => println!("Error spawning {}", msg),
+                    Err(msg) => println!("{}: Error spawning {}", address, msg),
                 }
             } else {
                 // no more address to try
@@ -60,7 +62,7 @@ pub async fn async_std_spawner(
         let (res, _, others) = futures::future::select_all(active_peers).await;
         active_peers = others;
         match res {
-            Result::Err(address) => println!("Peer died {}", address),
+            Result::Err(address) => println!("Peer died {}. Remaining {}", address, addresses.len()),
             Result::Ok(_) => target_num_peers -= 1,
         }
     }
@@ -72,19 +74,20 @@ pub async fn async_std_spawner(
 async fn spawn(
     address: SocketAddrV4,
     work_queue: Arc<SegQueue<PieceMeta>>,
-    done_channel: Sender<PieceMeta>,
+    done_channel: Sender<DownloadedPiece>,
     counter_channel: Sender<SocketAddrV4>,
     our_id: &[u8; 20],
     file_hash: &[u8; 20],
     total_num_pieces: usize,
 ) -> Result<JoinHandle<Result<InternalId, InternalId>>, &'static str> {
+    println!("{}: attempting to spawn", address);
     let mut stream = match TcpStream::connect(address).await {
         Ok(stream) => stream,
         Err(_) => return Err("Failed to connect"),
     };
 
-    if let Err(_) = protocol::handshake(&mut stream, &our_id, file_hash).await {
-        return Err("Handshake failed");
+    if let Err(s) = protocol::handshake(&mut stream, &our_id, file_hash).await {
+        return Err(s);
     }
 
     let (stream_rx, stream_tx) = stream.split();

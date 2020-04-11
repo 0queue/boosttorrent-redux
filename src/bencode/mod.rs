@@ -2,6 +2,7 @@ use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Formatter;
+use std::ops::Index;
 
 pub mod de;
 pub mod ser;
@@ -76,6 +77,14 @@ impl BVal {
         }
 
         panic!("Not an integer");
+    }
+}
+
+impl Index<&str> for BVal {
+    type Output = Self;
+
+    fn index(&self, index: &str) -> &Self::Output {
+        self.get(index)
     }
 }
 

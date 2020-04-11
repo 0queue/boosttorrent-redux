@@ -1,19 +1,25 @@
 use std::path::PathBuf;
-use std::time::Duration;
 
+use async_std::fs::File;
+use async_std::io::SeekFrom;
 use async_std::net::Ipv4Addr;
 use async_std::net::SocketAddrV4;
+use async_std::path::Path;
 use async_std::sync::Arc;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use crossbeam::queue::SegQueue;
 use flume::Receiver;
+use futures::AsyncSeekExt;
+use futures::AsyncWriteExt;
 use rand::Rng;
+use sha1::{Digest, Sha1};
 use structopt::StructOpt;
 
 use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
+use crate::peer::DownloadedPiece;
 
 mod bencode;
 mod counter;
@@ -27,7 +33,7 @@ struct Args {
     torrent_file_path: PathBuf,
 }
 
-const NUM_PEERS: usize = 5;
+const NUM_PEERS: usize = 20;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = Args::from_args();
@@ -39,6 +45,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let id = gen_peer_id();
     println!("This is {:02x?}", id);
+
+    let file_hash = {
+        let bencoded = torrent["info"].serialize();
+        let mut hasher = Sha1::new();
+        hasher.input(&bencoded);
+        let mut hash = [0u8; 20];
+        hash.copy_from_slice(&hasher.result());
+        hash
+    };
 
     let addresses = {
         // tracker things
@@ -57,24 +72,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => panic!("peers value not String or Dict"),
         };
 
-        std::thread::sleep(Duration::from_secs(5));
-        tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped);
-
         addresses
     };
 
     println!("Addresses: {:?}", addresses);
-    let addresses = vec![
-        // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
-        // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
-    ];
+    // let addresses = vec![
+    //     // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
+    //     // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
+    // ];
 
-    let (done_tx, done_rx) = flume::unbounded::<PieceMeta>();
+    let (done_tx, done_rx) = flume::unbounded::<DownloadedPiece>();
 
     let work_queue: Arc<SegQueue<PieceMeta>> = Arc::new(SegQueue::new());
     let (counter, counter_tx) = Counter::new();
 
     println!("file name: {:?}", torrent.get("info").get("name").string());
+
+    let output = async_std::task::block_on(async {
+        let name = torrent["info"]["name"].string();
+        if Path::new(&name).exists().await {
+            panic!("File already exists: {}", name);
+        }
+
+        File::create(name).await.unwrap()
+    });
+
     println!("file length: {:?}", torrent.get("info").get("length"));
     let piece_length = torrent.get("info").get("piece length").integer();
     println!("piece length: {:?}", piece_length);
@@ -122,18 +144,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Starting processing");
     async_std::task::block_on(async move {
-        // TODO:
-        //  - Pipelining in peers?
-
         let peers_handle = async_std::task::spawn(peer::async_std_spawner(
             addresses,
             work_queue.clone(),
             done_tx,
             counter_tx,
             id,
+            file_hash
         ));
 
-        let writer_handle = async_std::task::spawn(data_writer(done_rx));
+        let writer_handle = async_std::task::spawn(data_writer(output, piece_length, done_rx));
         let counter_handle = async_std::task::spawn(counter.start());
 
         writer_handle.await;
@@ -145,6 +165,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             work_queue.len()
         );
     });
+
+    tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped);
 
     Ok(())
 }
@@ -169,12 +191,14 @@ pub struct PieceMeta {
     pub length: usize,
 }
 
-async fn data_writer(mut done_rx: Receiver<PieceMeta>) {
+async fn data_writer(mut output: File, piece_length: i64, mut done_rx: Receiver<DownloadedPiece>) {
     println!("Starting finished work receiver");
     loop {
         match done_rx.recv_async().await {
             Ok(p) => {
                 println!("Finished with {:?}", p.index);
+                output.seek(SeekFrom::Start((p.index * piece_length as usize) as u64)).await.unwrap();
+                output.write_all(&p.data).await.unwrap();
             }
             Err(_) => {
                 println!("all senders disconnected");
@@ -182,5 +206,7 @@ async fn data_writer(mut done_rx: Receiver<PieceMeta>) {
             }
         }
     }
+
+    output.sync_all().await.unwrap();
     println!("Done");
 }
