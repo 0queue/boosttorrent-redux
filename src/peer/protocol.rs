@@ -10,6 +10,7 @@ use futures::io::WriteHalf;
 
 pub const PROTOCOL: &[u8; 20] = b"\x19Bittorrent protocol";
 
+#[derive(Debug)]
 pub enum Message {
     Choke,
     Unchoke,
@@ -24,9 +25,9 @@ pub enum Message {
 
 #[derive(Debug)]
 pub struct BlockRequest {
-    index: u32,
-    begin: u32,
-    length: u32,
+    pub index: u32,
+    pub begin: u32,
+    pub length: u32,
 }
 
 impl From<(u32, u32, u32)> for BlockRequest {
@@ -39,10 +40,11 @@ impl From<(u32, u32, u32)> for BlockRequest {
     }
 }
 
+#[derive(Debug)]
 pub struct BlockResponse {
-    index: u32,
-    begin: u32,
-    data: Vec<u8>,
+    pub index: u32,
+    pub begin: u32,
+    pub data: Vec<u8>,
 }
 
 impl Message {

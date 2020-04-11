@@ -1,5 +1,4 @@
 use std::io::Read;
-use std::time::Duration;
 
 use percent_encoding::NON_ALPHANUMERIC;
 use percent_encoding::percent_encode;
@@ -9,6 +8,7 @@ use sha1::Sha1;
 use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 
+#[allow(dead_code)]
 pub enum Event {
     Started,
     Completed,
@@ -27,7 +27,7 @@ impl std::fmt::Display for Event {
     }
 }
 
-pub fn announce(torrent: &BVal, id: &[u8; 20], port: u16, event: Event) {
+pub fn announce(torrent: &BVal, id: &[u8; 20], port: u16, event: Event) -> BVal {
     println!("announce: {:?}", torrent.get("announce").string());
 
     let info_hash = {
@@ -68,4 +68,6 @@ pub fn announce(torrent: &BVal, id: &[u8; 20], port: u16, event: Event) {
     };
 
     println!("Response: {:?}", response);
+
+    response
 }

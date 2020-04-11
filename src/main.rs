@@ -1,12 +1,13 @@
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::Duration;
 
-use async_std::net::{Ipv4Addr, SocketAddrV4};
+use async_std::net::Ipv4Addr;
+use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
+use byteorder::BigEndian;
+use byteorder::ByteOrder;
 use crossbeam::queue::SegQueue;
 use flume::Receiver;
-use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_encode};
 use rand::Rng;
 use structopt::StructOpt;
 
@@ -39,12 +40,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let id = gen_peer_id();
     println!("This is {:02x?}", id);
 
-    {
+    let addresses = {
         // tracker things
-        tracker::announce(&torrent, &id, 6881, tracker::Event::Started);
+        let response = tracker::announce(&torrent, &id, 6881, tracker::Event::Started);
+
+        let addresses = match response.get("peers") {
+            BVal::String(peers) => peers
+                .chunks(6)
+                .map(|peer| {
+                    let address = BigEndian::read_u32(peer);
+                    let port = BigEndian::read_u16(&peer[4..]);
+                    SocketAddrV4::new(Ipv4Addr::from(address), port)
+                })
+                .collect::<Vec<_>>(),
+            BVal::Dict(_) => todo!("regular peer list"),
+            _ => panic!("peers value not String or Dict"),
+        };
+
         std::thread::sleep(Duration::from_secs(5));
         tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped);
-    }
+
+        addresses
+    };
+
+    println!("Addresses: {:?}", addresses);
+    let addresses = vec![
+        // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
+        // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
+    ];
 
     let (done_tx, done_rx) = flume::unbounded::<PieceMeta>();
 
@@ -101,11 +124,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     async_std::task::block_on(async move {
         // TODO:
         //  - Pipelining in peers?
-
-        let addresses = vec![
-            // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
-            // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
-        ];
 
         let peers_handle = async_std::task::spawn(peer::async_std_spawner(
             addresses,
