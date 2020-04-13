@@ -3,15 +3,13 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 
 use async_std::net::SocketAddrV4;
-use async_std::sync::Arc;
 use bit_vec::BitVec;
-use crossbeam::queue::SegQueue;
-use flume::{Receiver, RecvError};
-use flume::Sender;
 use futures::stream::FusedStream;
 use sha1::Digest;
 use sha1::Sha1;
 
+use crate::peer::MessageBus;
+use crate::peer::PeerBus;
 use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::Message;
 use crate::PieceMeta;
@@ -20,11 +18,8 @@ pub type InternalId = SocketAddrV4;
 
 pub struct PeerProcessor {
     pub id: InternalId,
-    pub work_queue: Arc<SegQueue<PieceMeta>>,
-    pub done_tx: Sender<DownloadedPiece>,
-    pub counter_tx: Sender<InternalId>,
-    pub msg_tx: Sender<Message>,
-    pub msg_rx: Receiver<Message>,
+    pub bus: PeerBus,
+    pub msg_bus: MessageBus,
     choked: bool,
     interested: bool,
     bitfield: BitVec,
@@ -33,20 +28,14 @@ pub struct PeerProcessor {
 impl PeerProcessor {
     pub fn new(
         id: InternalId,
-        work_queue: Arc<SegQueue<PieceMeta>>,
-        done_tx: Sender<DownloadedPiece>,
-        counter_tx: Sender<InternalId>,
-        msg_tx: Sender<Message>,
-        msg_rx: Receiver<Message>,
+        bus: PeerBus,
+        message_bus: MessageBus,
         total_num_pieces: usize,
     ) -> PeerProcessor {
         PeerProcessor {
             id,
-            work_queue,
-            done_tx,
-            counter_tx,
-            msg_tx,
-            msg_rx,
+            bus,
+            msg_bus: message_bus,
             choked: false,
             interested: false,
             bitfield: BitVec::with_capacity(total_num_pieces),
@@ -56,7 +45,7 @@ impl PeerProcessor {
     pub async fn start(mut self) -> Result<InternalId, InternalId> {
         println!("{}: Starting", self.id);
 
-        match self.msg_rx.recv_async().await {
+        match self.msg_bus.recv().await {
             Ok(Message::Bitfield(bitfield)) => {
                 self.bitfield = bitfield;
             }
@@ -66,26 +55,30 @@ impl PeerProcessor {
             }
         }
 
-        println!("{}: Sending unchoke and interested", self.id);
-        self.msg_tx.send(Message::Unchoke).unwrap();
-        self.msg_tx.send(Message::Interested).unwrap();
+        self.msg_bus.send(Message::Unchoke);
+        self.msg_bus.send(Message::Interested);
 
         loop {
-            let piece = match self.work_queue.pop() {
+            let piece = match self.bus.work_queue.pop() {
                 Ok(p) => p,
                 Err(_) => break,
             };
 
             if !self.bitfield[piece.index] {
-                self.work_queue.push(piece);
+                self.bus.work_queue.push(piece);
                 async_std::task::yield_now().await;
                 continue;
+            }
+
+            for index in self.bus.have_rx.try_iter() {
+                println!("{}: sending HAVE {}", self.id, index);
+                self.msg_bus.send(Message::Have(index));
             }
 
             println!("{}: Attempting download of {}", self.id, piece.index);
             let downloaded = self.download_piece(&piece).await;
 
-            if self.msg_rx.is_terminated() {
+            if self.msg_bus.rx.is_terminated() {
                 eprintln!("{}: terminated", self.id);
                 return Err(self.id);
             }
@@ -93,13 +86,13 @@ impl PeerProcessor {
             match downloaded {
                 None => {
                     println!("{}: Failed to get piece {}", self.id, piece.index);
-                    self.work_queue.push(piece);
+                    self.bus.work_queue.push(piece);
                 }
                 Some(p) => {
                     println!("{}: SUCCESS piece {}", self.id, piece.index);
-                    self.msg_tx.send(Message::Have(p.index as u32)).unwrap();
-                    self.done_tx.send(p).unwrap();
-                    self.counter_tx.send(self.id).unwrap();
+                    self.bus.have_tx.send(p.index as u32).unwrap();
+                    self.bus.done_tx.send(p).unwrap();
+                    self.bus.counter_tx.send(self.id).unwrap();
                 }
             }
         }
@@ -125,8 +118,6 @@ impl PeerProcessor {
             blocks
         };
 
-        println!("{}: {} last block: {:?}", self.id, piece.length, blocks[blocks.len() - 1]);
-
         let total_blocks = blocks.len();
         let mut blocks_received = 0;
         let mut in_flight = 0usize;
@@ -136,7 +127,7 @@ impl PeerProcessor {
             // let incoming_msgs = self.msg_rx.drain().collect::<Vec<_>>();
             // for msg in incoming_msgs {
             // println!("{}: waiting for message", self.id);
-            let msg = self.msg_rx.recv_async().await;
+            let msg = self.msg_bus.recv().await;
             let msg = match msg {
                 Ok(m) => m,
                 Err(e) => {
@@ -176,7 +167,7 @@ impl PeerProcessor {
             // println!("{}: Filling pipeline in_flight: {}, blocks.len(): {}", self.id, in_flight, blocks.len());
             while in_flight < min(blocks.len(), PIPELINE_LENGTH) && blocks.len() > 0 {
                 // fill pipeline
-                self.msg_tx.send(Message::Request(blocks.pop().unwrap())).unwrap();
+                self.msg_bus.send(Message::Request(blocks.pop().unwrap()));
                 in_flight += 1;
             }
         }
@@ -196,7 +187,10 @@ impl PeerProcessor {
             // oh no
             eprintln!("{}: downloaded hash: {:?}", self.id, hash.as_slice());
             eprintln!("{}: target hash: {:?}", self.id, piece.hash);
-            eprintln!("{}: Mismatched hash total_blocks {}, total received {}", self.id, total_blocks, blocks_received);
+            eprintln!(
+                "{}: Mismatched hash total_blocks {}, total received {}",
+                self.id, total_blocks, blocks_received
+            );
             None
         }
     }

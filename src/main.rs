@@ -13,13 +13,16 @@ use flume::Receiver;
 use futures::AsyncSeekExt;
 use futures::AsyncWriteExt;
 use rand::Rng;
-use sha1::{Digest, Sha1};
+use sha1::Digest;
+use sha1::Sha1;
 use structopt::StructOpt;
 
 use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
 use crate::peer::DownloadedPiece;
+use crate::peer::PeerBus;
+use crate::peer::Us;
 
 mod bencode;
 mod counter;
@@ -37,10 +40,7 @@ const NUM_PEERS: usize = 20;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = Args::from_args();
-    println!("{:?}", args);
-
     let contents = std::fs::read(args.torrent_file_path)?;
-
     let torrent = deserialize(&contents)?;
 
     let id = gen_peer_id();
@@ -56,10 +56,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let addresses = {
-        // tracker things
         let response = tracker::announce(&torrent, &id, 6881, tracker::Event::Started);
 
-        let addresses = match response.get("peers") {
+        match &response["peers"] {
             BVal::String(peers) => peers
                 .chunks(6)
                 .map(|peer| {
@@ -70,44 +69,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<_>>(),
             BVal::Dict(_) => todo!("regular peer list"),
             _ => panic!("peers value not String or Dict"),
-        };
-
-        addresses
+        }
     };
 
-    println!("Addresses: {:?}", addresses);
-    // let addresses = vec![
-    //     // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8080),
-    //     // SocketAddrV4::new(Ipv4Addr::from_str("127.0.0.1").unwrap(), 8081),
-    // ];
+    println!("{} Addresses: {:?}", addresses.len(), addresses);
 
     let (done_tx, done_rx) = flume::unbounded::<DownloadedPiece>();
+    let (have_tx, have_rx) = crossbeam::unbounded();
 
     let work_queue: Arc<SegQueue<PieceMeta>> = Arc::new(SegQueue::new());
     let (counter, counter_tx) = Counter::new();
 
-    println!("file name: {:?}", torrent.get("info").get("name").string());
-
     let output = async_std::task::block_on(async {
         let name = torrent["info"]["name"].string();
         if Path::new(&name).exists().await {
-            panic!("File already exists: {}", name);
+            println!("File already exists, overwriting: {}", name);
         }
 
         File::create(name).await.unwrap()
     });
 
-    println!("file length: {:?}", torrent.get("info").get("length"));
-    let piece_length = torrent.get("info").get("piece length").integer();
-    println!("piece length: {:?}", piece_length);
-
-    let piece_hashes = torrent.get("info").get("pieces").bytes();
-
-    println!(
-        "Length of pieces array: {} multiple of 20? {}",
-        piece_hashes.len(),
-        piece_hashes.len() % 20 == 0
-    );
+    let piece_length = torrent["info"]["piece length"].integer();
+    let piece_hashes = torrent["info"]["pieces"].bytes();
 
     if piece_hashes.len() % 20 != 0 {
         panic!("piece hash array length not a multiple of 20");
@@ -144,16 +127,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Starting processing");
     async_std::task::block_on(async move {
-        let peers_handle = async_std::task::spawn(peer::async_std_spawner(
-            addresses,
-            work_queue.clone(),
+        let peer_bus = PeerBus {
+            work_queue: work_queue.clone(),
             done_tx,
             counter_tx,
-            id,
-            file_hash
-        ));
+            have_tx,
+            have_rx,
+        };
+        let us = Us { id, file_hash };
 
-        let writer_handle = async_std::task::spawn(data_writer(output, piece_length, done_rx));
+        let peers_handle = async_std::task::spawn(peer::async_std_spawner(addresses, peer_bus, us));
+        let writer_handle = async_std::task::spawn(data_writer(output, piece_length, done_rx, work_queue.len()));
         let counter_handle = async_std::task::spawn(counter.start());
 
         writer_handle.await;
@@ -191,14 +175,27 @@ pub struct PieceMeta {
     pub length: usize,
 }
 
-async fn data_writer(mut output: File, piece_length: i64, mut done_rx: Receiver<DownloadedPiece>) {
+async fn data_writer(
+    mut output: File,
+    piece_length: i64,
+    mut done_rx: Receiver<DownloadedPiece>,
+    num_pieces: usize,
+) {
     println!("Starting finished work receiver");
+    let mut bitfield = bit_vec::BitVec::from_elem(num_pieces, false);
     loop {
         match done_rx.recv_async().await {
             Ok(p) => {
-                println!("Finished with {:?}", p.index);
-                output.seek(SeekFrom::Start((p.index * piece_length as usize) as u64)).await.unwrap();
+                output
+                    .seek(SeekFrom::Start((p.index * piece_length as usize) as u64))
+                    .await
+                    .unwrap();
                 output.write_all(&p.data).await.unwrap();
+                bitfield.set(p.index, true);
+
+                let ones = count_ones(&bitfield);
+                let percent = ones as f32 / num_pieces as f32;
+                println!("Finished with {:?}. Completed: {} / {} = {}", p.index, ones, num_pieces, percent);
             }
             Err(_) => {
                 println!("all senders disconnected");
@@ -209,4 +206,8 @@ async fn data_writer(mut output: File, piece_length: i64, mut done_rx: Receiver<
 
     output.sync_all().await.unwrap();
     println!("Done");
+}
+
+fn count_ones(bitfield: &bit_vec::BitVec) -> usize {
+    bitfield.iter().filter(|&e| e).count()
 }

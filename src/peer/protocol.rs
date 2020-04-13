@@ -1,6 +1,3 @@
-use std::fmt::{Error, Formatter};
-use std::time::Duration;
-
 use async_std::io::prelude::WriteExt;
 use async_std::net::TcpStream;
 use byteorder::BigEndian;
@@ -35,9 +32,18 @@ impl std::fmt::Display for Message {
             Message::NotInterested => "Message::NotInterested".to_string(),
             Message::Have(index) => format!("Message::Have({})", index),
             Message::Bitfield(_) => "Message::Bitfield(...)".to_string(),
-            Message::Request(req) => format!("Message::Request(index: {}, begin: {}, length: {}", req.index, req.begin, req.length),
-            Message::Piece(block) => format!("Message::Piece(index: {}, begin: {}, ...)", block.index, block.begin),
-            Message::Cancel(req) => format!("Message::Cancel(index: {}, begin: {}, length: {}", req.index, req.begin, req.length),
+            Message::Request(req) => format!(
+                "Message::Request(index: {}, begin: {}, length: {}",
+                req.index, req.begin, req.length
+            ),
+            Message::Piece(block) => format!(
+                "Message::Piece(index: {}, begin: {}, ...)",
+                block.index, block.begin
+            ),
+            Message::Cancel(req) => format!(
+                "Message::Cancel(index: {}, begin: {}, length: {}",
+                req.index, req.begin, req.length
+            ),
         };
 
         write!(f, "{}", res)
@@ -72,7 +78,13 @@ impl Message {
     pub async fn from(stream: &mut ReadHalf<TcpStream>) -> Result<Message, &'static str> {
         let length = loop {
             let mut length_prefix = [0u8; 4];
-            stream.read_exact(&mut length_prefix).await.map_err(|_| "failed to read prefix")?;
+            stream
+                .read_exact(&mut length_prefix)
+                .await
+                .map_err(|e| {
+                    eprintln!("stream read error: {}", e);
+                    "failed to read prefix"
+                })?;
             let length = BigEndian::read_u32(&length_prefix[0..]);
             if length != 0 {
                 break length;
@@ -170,42 +182,6 @@ fn prepare_buf(payload_length: u32, msg_type: u8) -> Vec<u8> {
     res[4] = msg_type;
 
     res
-}
-
-pub(crate) async fn handshake(
-    stream: &mut TcpStream,
-    id: &[u8; 20],
-    file_hash: &[u8; 20],
-) -> Result<(), &'static str> {
-    stream.write(PROTOCOL).await.map_err(|_| "failed to write protocol string")?;
-    stream.write(&[0u8; 8]).await.map_err(|_| "failed to write extension flags")?;
-    stream.write(file_hash).await.map_err(|_| "failed to write file hash")?;
-    stream.write(id).await.map_err(|_| "failed to write id")?;
-    // stream.flush().await.map_err(|_| "failed to flush")?;
-
-    let mut buf = [0u8; 20 + 8 + 20 + 20];
-    async_std::io::timeout(Duration::from_secs(5), stream.read_exact(&mut buf)).await.map_err(|e| {
-        eprintln!("read_exact error {:?}", e);
-        "failed to read_exact"
-    })?;
-
-    let (protocol, flags, _their_hash, _their_id) =
-        (&buf[0..20], &buf[20..28], &buf[28..48], &buf[48..68]);
-
-    if protocol != PROTOCOL {
-        return Err("protocol mismatch");
-    }
-
-    if flags != &[0u8; 8] {
-        eprintln!("Flags mismatch {:?}", flags);
-        // return Err("flags mismatch");
-    }
-
-    // TODO check hash
-
-    // TODO check id
-
-    Ok(())
 }
 
 pub async fn sender(mut stream: WriteHalf<TcpStream>, mut msg_rx: Receiver<Message>) {
