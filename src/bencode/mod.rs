@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::ops::Index;
 
+use sha1::{Digest, Sha1};
+
 pub mod de;
 pub mod ser;
 
@@ -36,6 +38,15 @@ impl std::fmt::Display for BErr {
 impl BVal {
     pub fn serialize(&self) -> Vec<u8> {
         ser::serialize(self)
+    }
+
+    pub fn hash(&self) -> [u8; 20] {
+        let bencoded = self.serialize();
+        let mut hasher = Sha1::new();
+        hasher.input(&bencoded);
+        let mut hash = [0u8; 20];
+        hash.copy_from_slice(&hasher.result());
+        hash
     }
 
     pub fn get(&self, key: &str) -> &BVal {

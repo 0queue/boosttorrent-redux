@@ -1,25 +1,21 @@
+use std::cmp::min;
 use std::path::PathBuf;
 
 use async_std::fs::File;
-use async_std::io::SeekFrom;
 use async_std::net::Ipv4Addr;
 use async_std::net::SocketAddrV4;
 use async_std::path::Path;
-use async_std::sync::Arc;
+use async_std::sync::{Arc, RwLock};
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use crossbeam::queue::SegQueue;
-use flume::Receiver;
-use futures::AsyncSeekExt;
-use futures::AsyncWriteExt;
 use rand::Rng;
-use sha1::Digest;
-use sha1::Sha1;
 use structopt::StructOpt;
 
 use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
+use crate::peer2::spawner::SharedState;
 use crate::peer::DownloadedPiece;
 use crate::peer::PeerBus;
 use crate::peer::Us;
@@ -28,6 +24,8 @@ mod bencode;
 mod counter;
 mod peer;
 mod tracker;
+mod data_writer;
+mod peer2;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -46,14 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let id = gen_peer_id();
     println!("This is {:02x?}", id);
 
-    let file_hash = {
-        let bencoded = torrent["info"].serialize();
-        let mut hasher = Sha1::new();
-        hasher.input(&bencoded);
-        let mut hash = [0u8; 20];
-        hash.copy_from_slice(&hasher.result());
-        hash
-    };
+    let file_hash = torrent["info"].hash();
 
     let addresses = {
         let response = tracker::announce(&torrent, &id, 6881, tracker::Event::Started);
@@ -75,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{} Addresses: {:?}", addresses.len(), addresses);
 
     let (done_tx, done_rx) = flume::unbounded::<DownloadedPiece>();
-    let (have_tx, have_rx) = crossbeam::unbounded();
+    // let (have_tx, have_rx) = crossbeam::unbounded();
 
     let work_queue: Arc<SegQueue<PieceMeta>> = Arc::new(SegQueue::new());
     let (counter, counter_tx) = Counter::new();
@@ -105,10 +96,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|(index, chunk)| {
             let mut hash = [0u8; 20];
             hash.copy_from_slice(chunk);
+            let piece_length = {
+                let start = index * piece_length as usize;
+                let end = min(start + piece_length as usize, torrent["info"]["length"].integer() as usize);
+                end - start
+            };
             PieceMeta {
                 index,
                 hash,
-                length: piece_length as usize,
+                length: piece_length,
             }
         })
         .collect::<Vec<_>>();
@@ -131,13 +127,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             work_queue: work_queue.clone(),
             done_tx,
             counter_tx,
-            have_tx,
-            have_rx,
         };
         let us = Us { id, file_hash };
+        let shared_state = Arc::new(RwLock::new(SharedState {
+            received: 0,
+            total: peer_bus.work_queue.len(),
+        }));
 
-        let peers_handle = async_std::task::spawn(peer::async_std_spawner(addresses, peer_bus, us));
-        let writer_handle = async_std::task::spawn(data_writer(output, piece_length, done_rx, work_queue.len()));
+        let peers_handle = async_std::task::spawn(peer2::spawner::spawner(us, addresses, peer_bus, shared_state.clone()));
+        let writer_handle = async_std::task::spawn(data_writer::data_writer(output, piece_length, done_rx, work_queue.len(), shared_state.clone()));
         let counter_handle = async_std::task::spawn(counter.start());
 
         writer_handle.await;
@@ -173,39 +171,6 @@ pub struct PieceMeta {
     pub index: usize,
     pub hash: [u8; 20],
     pub length: usize,
-}
-
-async fn data_writer(
-    mut output: File,
-    piece_length: i64,
-    mut done_rx: Receiver<DownloadedPiece>,
-    num_pieces: usize,
-) {
-    println!("Starting finished work receiver");
-    let mut bitfield = bit_vec::BitVec::from_elem(num_pieces, false);
-    loop {
-        match done_rx.recv_async().await {
-            Ok(p) => {
-                output
-                    .seek(SeekFrom::Start((p.index * piece_length as usize) as u64))
-                    .await
-                    .unwrap();
-                output.write_all(&p.data).await.unwrap();
-                bitfield.set(p.index, true);
-
-                let ones = count_ones(&bitfield);
-                let percent = ones as f32 / num_pieces as f32;
-                println!("Finished with {:?}. Completed: {} / {} = {}", p.index, ones, num_pieces, percent);
-            }
-            Err(_) => {
-                println!("all senders disconnected");
-                break;
-            }
-        }
-    }
-
-    output.sync_all().await.unwrap();
-    println!("Done");
 }
 
 fn count_ones(bitfield: &bit_vec::BitVec) -> usize {

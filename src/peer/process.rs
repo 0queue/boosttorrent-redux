@@ -36,7 +36,7 @@ impl PeerProcessor {
             id,
             bus,
             msg_bus: message_bus,
-            choked: false,
+            choked: true,
             interested: false,
             bitfield: BitVec::with_capacity(total_num_pieces),
         }
@@ -44,6 +44,8 @@ impl PeerProcessor {
 
     pub async fn start(mut self) -> Result<InternalId, InternalId> {
         println!("{}: Starting", self.id);
+
+        self.msg_bus.send(Message::Interested);
 
         match self.msg_bus.recv().await {
             Ok(Message::Bitfield(bitfield)) => {
@@ -55,9 +57,6 @@ impl PeerProcessor {
             }
         }
 
-        self.msg_bus.send(Message::Unchoke);
-        self.msg_bus.send(Message::Interested);
-
         loop {
             let piece = match self.bus.work_queue.pop() {
                 Ok(p) => p,
@@ -68,11 +67,6 @@ impl PeerProcessor {
                 self.bus.work_queue.push(piece);
                 async_std::task::yield_now().await;
                 continue;
-            }
-
-            for index in self.bus.have_rx.try_iter() {
-                println!("{}: sending HAVE {}", self.id, index);
-                self.msg_bus.send(Message::Have(index));
             }
 
             println!("{}: Attempting download of {}", self.id, piece.index);
@@ -90,7 +84,7 @@ impl PeerProcessor {
                 }
                 Some(p) => {
                     println!("{}: SUCCESS piece {}", self.id, piece.index);
-                    self.bus.have_tx.send(p.index as u32).unwrap();
+                    self.msg_bus.send(Message::Have(piece.index as u32));
                     self.bus.done_tx.send(p).unwrap();
                     self.bus.counter_tx.send(self.id).unwrap();
                 }
@@ -124,9 +118,6 @@ impl PeerProcessor {
         let mut piece_data = vec![0u8; piece.length];
 
         while blocks.len() > 0 || in_flight > 0 {
-            // let incoming_msgs = self.msg_rx.drain().collect::<Vec<_>>();
-            // for msg in incoming_msgs {
-            // println!("{}: waiting for message", self.id);
             let msg = self.msg_bus.recv().await;
             let msg = match msg {
                 Ok(m) => m,
@@ -156,7 +147,6 @@ impl PeerProcessor {
                 }
                 Message::Cancel(_) => {}
             }
-            // }
 
             if self.choked {
                 // wtf the await should be in the yield_now function??
@@ -164,7 +154,6 @@ impl PeerProcessor {
                 continue;
             }
 
-            // println!("{}: Filling pipeline in_flight: {}, blocks.len(): {}", self.id, in_flight, blocks.len());
             while in_flight < min(blocks.len(), PIPELINE_LENGTH) && blocks.len() > 0 {
                 // fill pipeline
                 self.msg_bus.send(Message::Request(blocks.pop().unwrap()));

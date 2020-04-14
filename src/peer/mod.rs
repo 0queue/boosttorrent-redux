@@ -20,17 +20,14 @@ use crate::peer::protocol::sender;
 use crate::PieceMeta;
 
 mod process;
-mod protocol;
-mod handshake;
+pub mod protocol;
+pub mod handshake;
 
 #[derive(Clone)]
 pub struct PeerBus {
     pub work_queue: Arc<SegQueue<PieceMeta>>,
     pub done_tx: Sender<DownloadedPiece>,
     pub counter_tx: Sender<SocketAddrV4>,
-    // not working as expected, I guess I don't know how channels work
-    pub have_tx: crossbeam::Sender<u32>,
-    pub have_rx: crossbeam::Receiver<u32>
 }
 
 pub struct MessageBus {
@@ -48,6 +45,7 @@ impl MessageBus {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Us {
     pub id: [u8; 20],
     pub file_hash: [u8; 20],
