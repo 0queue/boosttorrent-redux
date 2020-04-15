@@ -3,8 +3,6 @@ use std::time::Duration;
 
 use async_std::net::SocketAddrV4;
 use async_std::net::TcpStream;
-use async_std::sync::Arc;
-use async_std::sync::RwLock;
 use bit_vec::BitVec;
 use futures::AsyncReadExt;
 use sha1::Digest;
@@ -25,10 +23,10 @@ pub struct Peer {
     pub addr: SocketAddrV4,
     peer_bus: PeerBus,
     msg_bus: Option<MessageBus>,
-    state: State,
+    state: PeerState,
 }
 
-struct State {
+struct PeerState {
     choked: bool,
     interested: bool,
     bitfield: BitVec,
@@ -53,7 +51,7 @@ impl Peer {
             addr,
             peer_bus,
             msg_bus: None,
-            state: State {
+            state: PeerState {
                 choked: true,
                 interested: false,
                 bitfield: bit_vec::BitVec::from_elem(num_pieces, false),
@@ -64,7 +62,7 @@ impl Peer {
     pub async fn start(
         mut self,
         us: Us,
-        shared_state: Arc<RwLock<SharedState>>,
+        shared_state: SharedState,
         endgame_pieces: Vec<PieceMeta>,
     ) -> Result<SocketAddrV4, SocketAddrV4> {
         println!("{}: Starting", self.addr);
@@ -104,7 +102,7 @@ impl Peer {
 
     async fn main(
         mut self,
-        shared_state: Arc<RwLock<SharedState>>,
+        shared_state: SharedState,
         mut endgame_pieces: Vec<PieceMeta>,
     ) -> Result<SocketAddrV4, SocketAddrV4> {
         let mut job: Option<Job> = None;

@@ -1,7 +1,5 @@
 use async_std::fs::File;
 use async_std::io::SeekFrom;
-use async_std::sync::Arc;
-use async_std::sync::RwLock;
 use flume::Receiver;
 use futures::AsyncSeekExt;
 use futures::AsyncWriteExt;
@@ -15,7 +13,7 @@ pub async fn writer(
     piece_length: i64,
     mut done_rx: Receiver<DownloadedPiece>,
     num_pieces: usize,
-    shared_state: Arc<RwLock<SharedState>>,
+    shared_state: SharedState,
 ) {
     println!("Starting finished work receiver");
     let mut bitfield = bit_vec::BitVec::from_elem(num_pieces, false);

@@ -1,5 +1,6 @@
 use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
+use async_std::sync::RwLock;
 use crossbeam::queue::SegQueue;
 use flume::Receiver;
 use flume::Sender;
@@ -11,7 +12,9 @@ use crate::PieceMeta;
 
 mod writer;
 
-pub struct SharedState {
+pub type SharedState = Arc<RwLock<State>>;
+
+pub struct State {
     pub received: usize,
     pub total: usize,
     pub done: bool,

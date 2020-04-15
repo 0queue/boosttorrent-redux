@@ -1,6 +1,4 @@
 use async_std::net::SocketAddrV4;
-use async_std::sync::Arc;
-use async_std::sync::RwLock;
 
 pub use protocol::message::Message;
 
@@ -22,7 +20,7 @@ pub async fn spawner(
     us: Us,
     mut addresses: Vec<SocketAddrV4>,
     peer_bus: PeerBus,
-    shared_state: Arc<RwLock<SharedState>>,
+    shared_state: SharedState,
     endgame_pieces: Vec<PieceMeta>,
 ) {
     let mut active_peers = Vec::new();

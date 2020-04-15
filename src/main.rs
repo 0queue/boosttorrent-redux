@@ -18,7 +18,7 @@ use crate::bencode::de::deserialize;
 use crate::counter::Counter;
 use crate::data::DownloadedPiece;
 use crate::data::PeerBus;
-use crate::data::SharedState;
+use crate::data::State;
 use crate::data::Us;
 
 mod bencode;
@@ -135,7 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             counter_tx,
         };
         let us = Us { id, file_hash };
-        let shared_state = Arc::new(RwLock::new(SharedState {
+        let shared_state = Arc::new(RwLock::new(State {
             received: 0,
             total: peer_bus.work_queue.len(),
             done: false,
