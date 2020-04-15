@@ -16,10 +16,9 @@ use structopt::StructOpt;
 use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
-use crate::data::DownloadedPiece;
+use crate::data::{DownloadedPiece, Lifecycle};
 use crate::data::PeerBus;
 use crate::data::State;
-use crate::data::Us;
 
 mod bencode;
 mod counter;
@@ -121,7 +120,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let num_pieces = pieces.len();
-    let (pieces, endgame) = pieces.split_at(pieces.len() - 10);
 
     for p in pieces.to_vec() {
         work_queue.push(p);
@@ -134,25 +132,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             done_tx,
             counter_tx,
         };
-        let us = Us { id, file_hash };
         let shared_state = Arc::new(RwLock::new(State {
             received: 0,
-            total: peer_bus.work_queue.len(),
-            done: false,
+            total: num_pieces,
+            lifecycle: Lifecycle::Downloading,
+            id,
+            file_hash
         }));
 
         let peers_handle = async_std::task::spawn(peer::spawner(
-            us,
             addresses,
             peer_bus,
-            shared_state.clone(),
-            endgame.to_vec(),
+            shared_state.clone()
         ));
         let writer_handle = async_std::task::spawn(data::writer(
             output,
             piece_length,
-            done_rx,
             num_pieces,
+            done_rx,
             shared_state.clone(),
         ));
         let counter_handle = async_std::task::spawn(counter.start());

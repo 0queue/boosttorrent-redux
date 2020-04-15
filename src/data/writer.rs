@@ -6,13 +6,14 @@ use futures::AsyncWriteExt;
 
 use crate::count_ones;
 use crate::data::DownloadedPiece;
+use crate::data::Lifecycle;
 use crate::data::SharedState;
 
 pub async fn writer(
     mut output: File,
     piece_length: i64,
-    mut done_rx: Receiver<DownloadedPiece>,
     num_pieces: usize,
+    mut done_rx: Receiver<DownloadedPiece>,
     shared_state: SharedState,
 ) {
     println!("Starting finished work receiver");
@@ -21,26 +22,29 @@ pub async fn writer(
         match done_rx.recv_async().await {
             Ok(p) => {
                 if !bitfield[p.index] {
+                    // write to disk
                     output
                         .seek(SeekFrom::Start((p.index * piece_length as usize) as u64))
                         .await
                         .unwrap();
                     output.write_all(&p.data).await.unwrap();
-                    bitfield.set(p.index, true);
-                    shared_state.write().await.received += 1;
-                    if shared_state.read().await.received == num_pieces {
-                        shared_state.write().await.done = true;
-                    }
 
-                    if num_pieces - shared_state.read().await.received < 5 {
-                        println!(
-                            "endgame missing: {:?}",
-                            bitfield
-                                .iter()
-                                .enumerate()
-                                .filter(|(_, b)| !*b)
-                                .collect::<Vec<_>>()
-                        );
+                    // update state
+                    bitfield.set(p.index, true);
+                    let lifecycle = {
+                        let mut write = shared_state.write().await;
+                        write.received += 1;
+                        if write.received == num_pieces {
+                            write.lifecycle = Lifecycle::Done;
+                        } else if num_pieces - write.received < 10 {
+                            write.lifecycle = Lifecycle::Endgame;
+                        }
+
+                        write.lifecycle
+                    };
+
+                    if lifecycle == Lifecycle::Endgame {
+                        // TODO start a task to take from work_queue and broadcast
                     }
 
                     let ones = count_ones(&bitfield);

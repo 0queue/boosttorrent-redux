@@ -17,7 +17,17 @@ pub type SharedState = Arc<RwLock<State>>;
 pub struct State {
     pub received: usize,
     pub total: usize,
-    pub done: bool,
+    pub lifecycle: Lifecycle,
+    pub id: [u8; 20],
+    pub file_hash: [u8; 20],
+}
+
+#[derive(PartialEq, Copy, Clone)]
+#[allow(dead_code)]
+pub enum Lifecycle {
+    Downloading,
+    Endgame,
+    Done,
 }
 
 #[derive(Debug)]
@@ -37,10 +47,4 @@ pub struct PeerBus {
 pub struct MessageBus {
     pub tx: Sender<Message>,
     pub rx: Receiver<Message>,
-}
-
-#[derive(Copy, Clone)]
-pub struct Us {
-    pub id: [u8; 20],
-    pub file_hash: [u8; 20],
 }

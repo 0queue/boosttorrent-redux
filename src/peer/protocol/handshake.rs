@@ -4,11 +4,9 @@ use async_std::io::prelude::WriteExt;
 use async_std::net::TcpStream;
 use futures::AsyncReadExt;
 
-use crate::data::Us;
-
 pub const PROTOCOL: &[u8; 20] = b"\x13BitTorrent protocol";
 
-pub async fn handshake(stream: &mut TcpStream, us: &Us) -> Result<(), &'static str> {
+pub async fn handshake(stream: &mut TcpStream, id: &[u8], file_hash: &[u8]) -> Result<(), &'static str> {
     stream
         .write(PROTOCOL)
         .await
@@ -18,12 +16,12 @@ pub async fn handshake(stream: &mut TcpStream, us: &Us) -> Result<(), &'static s
         .await
         .map_err(|_| "failed to write extension flags")?;
     stream
-        .write(&us.file_hash)
+        .write(file_hash)
         .await
         .map_err(|_| "failed to write file hash")?;
 
     stream
-        .write(&us.id)
+        .write(id)
         .await
         .map_err(|_| "failed to write id")?;
 
