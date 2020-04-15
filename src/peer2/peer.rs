@@ -11,12 +11,16 @@ use futures::AsyncReadExt;
 use sha1::{Digest, Sha1};
 
 use crate::{count_ones, PieceMeta};
-use crate::peer::{DownloadedPiece, MessageBus, protocol};
+use crate::peer2::{DownloadedPiece, MessageBus, PeerBus, protocol, Us};
+use crate::peer2::protocol::{BlockRequest, Message};
+use crate::peer2::protocol::handshake::handshake;
+// use crate::peer::{DownloadedPiece, MessageBus, protocol};
 use crate::peer2::spawner::SharedState;
-use crate::peer::handshake::handshake;
-use crate::peer::PeerBus;
-use crate::peer::protocol::{BlockRequest, Message};
-use crate::peer::Us;
+
+// use crate::peer::handshake::handshake;
+// use crate::peer::PeerBus;
+// use crate::peer::protocol::{BlockRequest, Message};
+// use crate::peer::Us;
 
 pub struct Peer {
     pub addr: SocketAddrV4,

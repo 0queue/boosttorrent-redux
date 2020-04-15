@@ -8,6 +8,8 @@ use futures::AsyncReadExt;
 use futures::io::ReadHalf;
 use futures::io::WriteHalf;
 
+pub mod handshake;
+
 pub const PROTOCOL: &[u8; 20] = b"\x13BitTorrent protocol";
 
 #[derive(Debug)]

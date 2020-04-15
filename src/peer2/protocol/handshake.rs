@@ -4,8 +4,11 @@ use async_std::io::prelude::WriteExt;
 use async_std::net::TcpStream;
 use futures::AsyncReadExt;
 
-use crate::peer::protocol::PROTOCOL;
-use crate::peer::Us;
+use crate::peer2::protocol::PROTOCOL;
+use crate::peer2::Us;
+
+// use crate::peer::protocol::PROTOCOL;
+// use crate::peer::Us;
 
 pub async fn handshake(
     stream: &mut TcpStream,

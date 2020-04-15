@@ -6,8 +6,8 @@ use async_std::sync::{Arc, RwLock};
 use flume::Receiver;
 
 use crate::count_ones;
+use crate::peer2::DownloadedPiece;
 use crate::peer2::spawner::SharedState;
-use crate::peer::DownloadedPiece;
 
 pub async fn data_writer(
     mut output: File,

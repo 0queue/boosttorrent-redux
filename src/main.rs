@@ -15,14 +15,16 @@ use structopt::StructOpt;
 use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
+use crate::peer2::{DownloadedPiece, PeerBus, Us};
 use crate::peer2::spawner::SharedState;
-use crate::peer::DownloadedPiece;
-use crate::peer::PeerBus;
-use crate::peer::Us;
+
+// use crate::peer::DownloadedPiece;
+// use crate::peer::PeerBus;
+// use crate::peer::Us;
 
 mod bencode;
 mod counter;
-mod peer;
+// mod peer;
 mod tracker;
 mod data_writer;
 mod peer2;

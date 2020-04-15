@@ -3,9 +3,11 @@ use async_std::sync::Arc;
 use async_std::sync::RwLock;
 
 use crate::{NUM_PEERS, PieceMeta};
+use crate::peer2::{PeerBus, Us};
 use crate::peer2::peer::Peer;
-use crate::peer::PeerBus;
-use crate::peer::Us;
+
+// use crate::peer::PeerBus;
+// use crate::peer::Us;
 
 pub struct SharedState {
     pub received: usize,
