@@ -1,16 +1,13 @@
-use async_std::io::prelude::WriteExt;
 use async_std::net::TcpStream;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-use flume::Receiver;
-use flume::Sender;
 use futures::AsyncReadExt;
+use futures::AsyncWriteExt;
 use futures::io::ReadHalf;
 use futures::io::WriteHalf;
 
-pub mod handshake;
-
-pub const PROTOCOL: &[u8; 20] = b"\x13BitTorrent protocol";
+use crate::peer::protocol::BlockRequest;
+use crate::peer::protocol::BlockResponse;
 
 #[derive(Debug)]
 pub enum Message {
@@ -52,41 +49,14 @@ impl std::fmt::Display for Message {
     }
 }
 
-#[derive(Debug)]
-pub struct BlockRequest {
-    pub index: u32,
-    pub begin: u32,
-    pub length: u32,
-}
-
-impl From<(u32, u32, u32)> for BlockRequest {
-    fn from((index, begin, length): (u32, u32, u32)) -> Self {
-        BlockRequest {
-            index,
-            begin,
-            length,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct BlockResponse {
-    pub index: u32,
-    pub begin: u32,
-    pub data: Vec<u8>,
-}
-
 impl Message {
     pub async fn from(stream: &mut ReadHalf<TcpStream>) -> Result<Message, &'static str> {
         let length = loop {
             let mut length_prefix = [0u8; 4];
-            stream
-                .read_exact(&mut length_prefix)
-                .await
-                .map_err(|e| {
-                    eprintln!("stream read error: {}", e);
-                    "failed to read prefix"
-                })?;
+            stream.read_exact(&mut length_prefix).await.map_err(|e| {
+                eprintln!("stream read error: {}", e);
+                "failed to read prefix"
+            })?;
             let length = BigEndian::read_u32(&length_prefix[0..]);
             if length != 0 {
                 break length;
@@ -184,33 +154,4 @@ fn prepare_buf(payload_length: u32, msg_type: u8) -> Vec<u8> {
     res[4] = msg_type;
 
     res
-}
-
-pub async fn sender(mut stream: WriteHalf<TcpStream>, mut msg_rx: Receiver<Message>) {
-    loop {
-        let msg = match msg_rx.recv_async().await {
-            Ok(m) => m,
-            Err(_) => return,
-        };
-
-        if let Err(_) = msg.send(&mut stream).await {
-            return;
-        }
-    }
-}
-
-pub async fn receiver(mut stream: ReadHalf<TcpStream>, msg_tx: Sender<Message>) {
-    loop {
-        let msg = match Message::from(&mut stream).await {
-            Ok(m) => m,
-            Err(s) => {
-                eprintln!("error receiving: {}", s);
-                return;
-            }
-        };
-
-        if let Err(_) = msg_tx.send(msg) {
-            return;
-        }
-    }
 }

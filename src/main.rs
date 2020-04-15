@@ -5,7 +5,8 @@ use async_std::fs::File;
 use async_std::net::Ipv4Addr;
 use async_std::net::SocketAddrV4;
 use async_std::path::Path;
-use async_std::sync::{Arc, RwLock};
+use async_std::sync::Arc;
+use async_std::sync::RwLock;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use crossbeam::queue::SegQueue;
@@ -15,19 +16,16 @@ use structopt::StructOpt;
 use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
 use crate::counter::Counter;
-use crate::peer2::{DownloadedPiece, PeerBus, Us};
-use crate::peer2::spawner::SharedState;
-
-// use crate::peer::DownloadedPiece;
-// use crate::peer::PeerBus;
-// use crate::peer::Us;
+use crate::data::DownloadedPiece;
+use crate::data::PeerBus;
+use crate::data::SharedState;
+use crate::data::Us;
 
 mod bencode;
 mod counter;
-// mod peer;
+mod data;
+mod peer;
 mod tracker;
-mod data_writer;
-mod peer2;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -36,7 +34,7 @@ struct Args {
     torrent_file_path: PathBuf,
 }
 
-const NUM_PEERS: usize = 20;
+const MAX_PEERS: usize = 20;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = Args::from_args();
@@ -100,7 +98,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hash.copy_from_slice(chunk);
             let piece_length = {
                 let start = index * piece_length as usize;
-                let end = min(start + piece_length as usize, torrent["info"]["length"].integer() as usize);
+                let end = min(
+                    start + piece_length as usize,
+                    torrent["info"]["length"].integer() as usize,
+                );
                 end - start
             };
             PieceMeta {
@@ -126,7 +127,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         work_queue.push(p);
     }
 
-
     println!("Starting processing");
     async_std::task::block_on(async move {
         let peer_bus = PeerBus {
@@ -141,8 +141,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             done: false,
         }));
 
-        let peers_handle = async_std::task::spawn(peer2::spawner::spawner(us, addresses, peer_bus, shared_state.clone(), endgame.to_vec()));
-        let writer_handle = async_std::task::spawn(data_writer::data_writer(output, piece_length, done_rx, num_pieces, shared_state.clone()));
+        let peers_handle = async_std::task::spawn(peer::spawner(
+            us,
+            addresses,
+            peer_bus,
+            shared_state.clone(),
+            endgame.to_vec(),
+        ));
+        let writer_handle = async_std::task::spawn(data::writer(
+            output,
+            piece_length,
+            done_rx,
+            num_pieces,
+            shared_state.clone(),
+        ));
         let counter_handle = async_std::task::spawn(counter.start());
 
         writer_handle.await;

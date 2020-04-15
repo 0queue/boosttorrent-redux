@@ -1,75 +1,44 @@
-use std::time::Duration;
-
 use async_std::net::SocketAddrV4;
-use async_std::net::TcpStream;
 use async_std::sync::Arc;
-use async_std::task::JoinHandle;
-use crossbeam::queue::SegQueue;
-use flume::Receiver;
-use flume::RecvError;
-use flume::Sender;
-use futures::AsyncReadExt;
+use async_std::sync::RwLock;
 
-use crate::NUM_PEERS;
-pub use crate::peer::process::DownloadedPiece;
-use crate::peer::process::InternalId;
-use crate::peer::process::PeerProcessor;
-use crate::peer::protocol::Message;
-use crate::peer::protocol::receiver;
-use crate::peer::protocol::sender;
+pub use protocol::message::Message;
+
+use crate::data::PeerBus;
+use crate::data::SharedState;
+use crate::data::Us;
+use crate::MAX_PEERS;
+use crate::peer::peer::Peer;
 use crate::PieceMeta;
 
-mod process;
-pub mod protocol;
-pub mod handshake;
+mod peer;
+mod protocol;
 
-#[derive(Clone)]
-pub struct PeerBus {
-    pub work_queue: Arc<SegQueue<PieceMeta>>,
-    pub done_tx: Sender<DownloadedPiece>,
-    pub counter_tx: Sender<SocketAddrV4>,
-}
+// use crate::peer::PeerBus;
+// use crate::peer::Us;
 
-pub struct MessageBus {
-    pub tx: Sender<Message>,
-    pub rx: Receiver<Message>,
-}
-
-impl MessageBus {
-    fn send (&self, msg: Message) {
-        self.tx.send(msg).unwrap()
-    }
-
-    async fn recv(&mut self) -> Result<Message, RecvError> {
-        self.rx.recv_async().await
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct Us {
-    pub id: [u8; 20],
-    pub file_hash: [u8; 20],
-}
-
-pub async fn async_std_spawner(mut addresses: Vec<SocketAddrV4>, bus: PeerBus, us: Us) {
+/// a task to keep N peers live
+pub async fn spawner(
+    us: Us,
+    mut addresses: Vec<SocketAddrV4>,
+    peer_bus: PeerBus,
+    shared_state: Arc<RwLock<SharedState>>,
+    endgame_pieces: Vec<PieceMeta>,
+) {
     let mut active_peers = Vec::new();
-    let mut target_num_peers = NUM_PEERS;
-    let total_num_pieces = bus.work_queue.len();
+    let mut target_num_peers = MAX_PEERS;
+    let num_pieces = peer_bus.work_queue.len() + endgame_pieces.len();
 
     loop {
         while active_peers.len() < target_num_peers {
             if let Some(address) = addresses.pop() {
-                let fut = spawn(address, bus.clone(), &us, total_num_pieces);
-
-                match fut.await {
-                    Ok(handle) => {
-                        println!("{}: Spawned", address);
-                        active_peers.push(handle);
-                    }
-                    Err(msg) => println!("{}: Error spawning {}", address, msg),
-                }
+                let peer = Peer::new(address, peer_bus.clone(), num_pieces);
+                active_peers.push(async_std::task::spawn(peer.start(
+                    us,
+                    shared_state.clone(),
+                    endgame_pieces.clone(),
+                )))
             } else {
-                // no more address to try
                 break;
             }
         }
@@ -90,39 +59,4 @@ pub async fn async_std_spawner(mut addresses: Vec<SocketAddrV4>, bus: PeerBus, u
             Result::Ok(_) => target_num_peers -= 1,
         }
     }
-
-    println!("Done spawning peers");
-}
-
-// a little too tall... but how to fix?
-async fn spawn(
-    address: SocketAddrV4,
-    bus: PeerBus,
-    us: &Us,
-    total_num_pieces: usize,
-) -> Result<JoinHandle<Result<InternalId, InternalId>>, &'static str> {
-    println!("{}: attempting to spawn", address);
-    let mut stream = match async_std::io::timeout(Duration::from_secs(30), TcpStream::connect(address)).await {
-        Ok(stream) => stream,
-        Err(_) => return Err("Failed to connect"),
-    };
-
-    if let Err(s) = handshake::handshake(&mut stream, us).await {
-        return Err(s);
-    }
-
-    let (stream_rx, stream_tx) = stream.split();
-    let (send_msg_tx, send_msg_rx) = flume::unbounded();
-    let (recv_msg_tx, recv_msg_rx) = flume::unbounded();
-
-    let message_bus = MessageBus {
-        tx: send_msg_tx,
-        rx: recv_msg_rx,
-    };
-
-    let processor = PeerProcessor::new(address, bus, message_bus, total_num_pieces);
-
-    async_std::task::spawn(sender(stream_tx, send_msg_rx));
-    async_std::task::spawn(receiver(stream_rx, recv_msg_tx));
-    Ok(async_std::task::spawn(processor.start()))
 }

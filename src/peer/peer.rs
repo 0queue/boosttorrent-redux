@@ -1,26 +1,25 @@
 use std::cmp::min;
 use std::time::Duration;
 
-use async_std::io::Error;
 use async_std::net::SocketAddrV4;
 use async_std::net::TcpStream;
-use async_std::sync::{Arc, RwLock};
+use async_std::sync::Arc;
+use async_std::sync::RwLock;
 use bit_vec::BitVec;
-use flume::{RecvError, TryRecvError};
 use futures::AsyncReadExt;
-use sha1::{Digest, Sha1};
+use sha1::Digest;
+use sha1::Sha1;
 
-use crate::{count_ones, PieceMeta};
-use crate::peer2::{DownloadedPiece, MessageBus, PeerBus, protocol, Us};
-use crate::peer2::protocol::{BlockRequest, Message};
-use crate::peer2::protocol::handshake::handshake;
-// use crate::peer::{DownloadedPiece, MessageBus, protocol};
-use crate::peer2::spawner::SharedState;
-
-// use crate::peer::handshake::handshake;
-// use crate::peer::PeerBus;
-// use crate::peer::protocol::{BlockRequest, Message};
-// use crate::peer::Us;
+use crate::count_ones;
+use crate::data::DownloadedPiece;
+use crate::data::MessageBus;
+use crate::data::PeerBus;
+use crate::data::SharedState;
+use crate::data::Us;
+use crate::peer::protocol;
+use crate::peer::protocol::BlockRequest;
+use crate::peer::protocol::message::Message;
+use crate::PieceMeta;
 
 pub struct Peer {
     pub addr: SocketAddrV4,
@@ -49,11 +48,7 @@ enum JobState {
 }
 
 impl Peer {
-    pub fn new(
-        addr: SocketAddrV4,
-        peer_bus: PeerBus,
-        num_pieces: usize,
-    ) -> Peer {
+    pub fn new(addr: SocketAddrV4, peer_bus: PeerBus, num_pieces: usize) -> Peer {
         Peer {
             addr,
             peer_bus,
@@ -66,7 +61,12 @@ impl Peer {
         }
     }
 
-    pub async fn start(mut self, us: Us, shared_state: Arc<RwLock<SharedState>>, endgame_pieces: Vec<PieceMeta>) -> Result<SocketAddrV4, SocketAddrV4> {
+    pub async fn start(
+        mut self,
+        us: Us,
+        shared_state: Arc<RwLock<SharedState>>,
+        endgame_pieces: Vec<PieceMeta>,
+    ) -> Result<SocketAddrV4, SocketAddrV4> {
         println!("{}: Starting", self.addr);
 
         let stream = async_std::io::timeout(Duration::from_secs(5), TcpStream::connect(self.addr));
@@ -78,7 +78,7 @@ impl Peer {
             }
         };
 
-        if let Err(e) = handshake(&mut stream, &us).await {
+        if let Err(e) = protocol::handshake(&mut stream, &us).await {
             eprintln!("{}: Failed to handshake: {}", self.addr, e);
         }
 
@@ -113,13 +113,13 @@ impl Peer {
 
         match self.msg_bus.as_mut().unwrap().rx.recv_async().await {
             Ok(Message::Bitfield(bitfield)) => self.state.bitfield = bitfield,
-            e => {
+            _ => {
                 eprintln!("{}: did not receive bitfield", self.addr);
                 return Err(self.addr);
             }
         }
 
-        'main: loop {
+        loop {
             // println!("{}: main", self.addr);
 
             // get job from queue if needed
@@ -128,20 +128,24 @@ impl Peer {
                 //   in order to allow more msg processing
                 // while job.is_none() {
                 match self.peer_bus.work_queue.pop() {
-                    Ok(m) => if self.state.bitfield[m.index] {
-                        println!("{}: took {}", self.addr, m.index);
-                        job.replace(create_job(m));
-                    } else {
-                        self.peer_bus.work_queue.push(m);
-                        async_std::task::yield_now().await;
-                    },
+                    Ok(m) => {
+                        if self.state.bitfield[m.index] {
+                            println!("{}: took {}", self.addr, m.index);
+                            job.replace(create_job(m));
+                        } else {
+                            self.peer_bus.work_queue.push(m);
+                            async_std::task::yield_now().await;
+                        }
+                    }
                     Err(_) => {
                         // OKAY need endgame mode
                         // eprintln!("{}: error getting work", self.addr);
                         match endgame_pieces.pop() {
-                            Some(m) => if self.state.bitfield[m.index] {
-                                println!("{}: endgame {}", self.addr, m.index);
-                                job.replace(create_job(m));
+                            Some(m) => {
+                                if self.state.bitfield[m.index] {
+                                    println!("{}: endgame {}", self.addr, m.index);
+                                    job.replace(create_job(m));
+                                }
                             }
                             None => { /* nothing */ }
                         }
@@ -174,22 +178,27 @@ impl Peer {
                     let j = job.unwrap();
                     self.send(Message::Have(j.piece.index as u32));
                     self.peer_bus.counter_tx.send(self.addr).unwrap();
-                    self.peer_bus.done_tx.send(DownloadedPiece {
-                        index: j.piece.index,
-                        hash: j.piece.hash,
-                        data: j.data,
-                    }).unwrap();
+                    self.peer_bus
+                        .done_tx
+                        .send(DownloadedPiece {
+                            index: j.piece.index,
+                            hash: j.piece.hash,
+                            data: j.data,
+                        })
+                        .unwrap();
                     job = None;
                 }
-                Some(JobState::InProgress) => if !self.state.choked {
-                    let mut j = job.unwrap();
-                    // fill pipeline
-                    while j.in_flight < PIPELINE_LENGTH && j.blocks.len() > 0 {
-                        self.send(Message::Request(j.blocks.pop().unwrap()));
-                        j.in_flight += 1;
+                Some(JobState::InProgress) => {
+                    if !self.state.choked {
+                        let mut j = job.unwrap();
+                        // fill pipeline
+                        while j.in_flight < PIPELINE_LENGTH && j.blocks.len() > 0 {
+                            self.send(Message::Request(j.blocks.pop().unwrap()));
+                            j.in_flight += 1;
+                        }
+                        job = Some(j)
                     }
-                    job = Some(j)
-                },
+                }
                 None => {}
             }
 
@@ -204,7 +213,12 @@ impl Peer {
 
     async fn handle_msg(&mut self, job: &mut Option<Job>, block: bool) -> bool {
         let msg = if block {
-            match async_std::future::timeout(Duration::from_secs(5), self.msg_bus.as_mut().unwrap().rx.recv_async()).await {
+            match async_std::future::timeout(
+                Duration::from_secs(5),
+                self.msg_bus.as_mut().unwrap().rx.recv_async(),
+            )
+            .await
+            {
                 Ok(Ok(m)) => m,
                 Ok(Err(_)) => return false,
                 Err(_) => return true,

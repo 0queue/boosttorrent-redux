@@ -1,14 +1,21 @@
 use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
 use crossbeam::queue::SegQueue;
-use flume::{Receiver, RecvError, Sender};
+use flume::Receiver;
+use flume::Sender;
 
-use crate::peer2::protocol::Message;
+pub use writer::writer;
+
+use crate::peer::Message;
 use crate::PieceMeta;
 
-pub mod spawner;
-mod peer;
-mod protocol;
+mod writer;
+
+pub struct SharedState {
+    pub received: usize,
+    pub total: usize,
+    pub done: bool,
+}
 
 #[derive(Debug)]
 pub struct DownloadedPiece {
@@ -27,16 +34,6 @@ pub struct PeerBus {
 pub struct MessageBus {
     pub tx: Sender<Message>,
     pub rx: Receiver<Message>,
-}
-
-impl MessageBus {
-    fn send(&self, msg: Message) {
-        self.tx.send(msg).unwrap()
-    }
-
-    async fn recv(&mut self) -> Result<Message, RecvError> {
-        self.rx.recv_async().await
-    }
 }
 
 #[derive(Copy, Clone)]

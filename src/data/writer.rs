@@ -1,15 +1,16 @@
 use async_std::fs::File;
-use async_std::io::prelude::SeekExt;
-use async_std::io::prelude::WriteExt;
 use async_std::io::SeekFrom;
-use async_std::sync::{Arc, RwLock};
+use async_std::sync::Arc;
+use async_std::sync::RwLock;
 use flume::Receiver;
+use futures::AsyncSeekExt;
+use futures::AsyncWriteExt;
 
 use crate::count_ones;
-use crate::peer2::DownloadedPiece;
-use crate::peer2::spawner::SharedState;
+use crate::data::DownloadedPiece;
+use crate::data::SharedState;
 
-pub async fn data_writer(
+pub async fn writer(
     mut output: File,
     piece_length: i64,
     mut done_rx: Receiver<DownloadedPiece>,
@@ -34,12 +35,22 @@ pub async fn data_writer(
                     }
 
                     if num_pieces - shared_state.read().await.received < 5 {
-                        println!("endgame missing: {:?}", bitfield.iter().enumerate().filter(|(_, b)| !*b).collect::<Vec<_>>());
+                        println!(
+                            "endgame missing: {:?}",
+                            bitfield
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, b)| !*b)
+                                .collect::<Vec<_>>()
+                        );
                     }
 
                     let ones = count_ones(&bitfield);
                     let percent = ones as f32 / num_pieces as f32;
-                    println!("Finished with {:?}. Completed: {} / {} = {}", p.index, ones, num_pieces, percent);
+                    println!(
+                        "Finished with {:?}. Completed: {} / {} = {}",
+                        p.index, ones, num_pieces, percent
+                    );
                 } else {
                     println!("Received duplicate: {}", p.index);
                 }
