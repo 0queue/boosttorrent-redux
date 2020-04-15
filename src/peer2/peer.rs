@@ -62,7 +62,7 @@ impl Peer {
         }
     }
 
-    pub async fn start(mut self, us: Us, shared_state: Arc<RwLock<SharedState>>) -> Result<SocketAddrV4, SocketAddrV4> {
+    pub async fn start(mut self, us: Us, shared_state: Arc<RwLock<SharedState>>, endgame_pieces: Vec<PieceMeta>) -> Result<SocketAddrV4, SocketAddrV4> {
         println!("{}: Starting", self.addr);
 
         let stream = async_std::io::timeout(Duration::from_secs(5), TcpStream::connect(self.addr));
@@ -95,10 +95,14 @@ impl Peer {
 
         println!("{}: Successful start", self.addr);
 
-        self.main(shared_state).await
+        self.main(shared_state, endgame_pieces).await
     }
 
-    async fn main(mut self, shared_state: Arc<RwLock<SharedState>>) -> Result<SocketAddrV4, SocketAddrV4> {
+    async fn main(
+        mut self,
+        shared_state: Arc<RwLock<SharedState>>,
+        mut endgame_pieces: Vec<PieceMeta>,
+    ) -> Result<SocketAddrV4, SocketAddrV4> {
         let mut job: Option<Job> = None;
 
         self.send(Message::Interested);
@@ -118,40 +122,38 @@ impl Peer {
             if job.is_none() && count_ones(&self.state.bitfield) > 0 {
                 // TODO could also have a counter, that breaks at 20
                 //   in order to allow more msg processing
-                while job.is_none() {
-                    match self.peer_bus.work_queue.pop() {
-                        Ok(m) => {
-                            if self.state.bitfield[m.index] {
+                // while job.is_none() {
+                match self.peer_bus.work_queue.pop() {
+                    Ok(m) => if self.state.bitfield[m.index] {
+                        println!("{}: took {}", self.addr, m.index);
+                        job.replace(create_job(m));
+                    } else {
+                        self.peer_bus.work_queue.push(m);
+                        async_std::task::yield_now().await;
+                    },
+                    Err(_) => {
+                        // OKAY need endgame mode
+                        // eprintln!("{}: error getting work", self.addr);
+                        match endgame_pieces.pop() {
+                            Some(m) => if self.state.bitfield[m.index] {
+                                println!("{}: endgame {}", self.addr, m.index);
                                 job.replace(create_job(m));
-                            } else {
-                                self.peer_bus.work_queue.push(m);
-                                async_std::task::yield_now().await;
                             }
-                        },
-                        Err(_) => {
-                            let done = {
-                                let s = shared_state.read().await;
-                                s.received >= s.total
-                            };
+                            None => { /* nothing */ }
+                        }
+                    }
+                };
+                // }
+            }
 
-                            // OKAY need endgame mode
-                            println!("{}: error getting work {}", self.addr, done);
-
-                            if done {
-                                break 'main
-                            } else {
-                                async_std::task::sleep(Duration::from_millis(250));
-                            }
-                        },
-                    };
-
-
-                }
+            // read lifecycle state, if not dead, try to read for 5 seconds
+            if shared_state.read().await.done {
+                return Ok(self.addr);
             }
 
             // handle messages
-            let wait = job.as_ref().map(|j| j.in_flight > 0).unwrap_or(false) || self.state.choked;
-            if !self.handle_msg(&mut job, wait).await {
+            let block = job.as_ref().map(|j| j.in_flight > 0).unwrap_or(true) || self.state.choked;
+            if !self.handle_msg(&mut job, block).await {
                 return Err(self.addr);
             }
 
@@ -189,8 +191,6 @@ impl Peer {
 
             async_std::task::yield_now().await;
         }
-
-        Ok(self.addr)
     }
 
     fn send(&self, msg: Message) {
@@ -198,14 +198,12 @@ impl Peer {
         self.msg_bus.as_ref().unwrap().tx.send(msg).unwrap();
     }
 
-    async fn handle_msg(&mut self, job: &mut Option<Job>, wait: bool) -> bool {
-        let msg = if wait {
-            match self.msg_bus.as_mut().unwrap().rx.recv_async().await {
-                Ok(m) => m,
-                Err(_) => {
-                    eprintln!("{}: recv error", self.addr);
-                    return false;
-                }
+    async fn handle_msg(&mut self, job: &mut Option<Job>, block: bool) -> bool {
+        let msg = if block {
+            match async_std::future::timeout(Duration::from_secs(5), self.msg_bus.as_mut().unwrap().rx.recv_async()).await {
+                Ok(Ok(m)) => m,
+                Ok(Err(_)) => return false,
+                Err(_) => return true,
             }
         } else {
             match self.msg_bus.as_mut().unwrap().rx.try_recv() {

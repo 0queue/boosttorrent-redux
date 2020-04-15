@@ -117,9 +117,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pieces
     };
 
-    for p in pieces {
+    let num_pieces = pieces.len();
+    let (pieces, endgame) = pieces.split_at(pieces.len() - 10);
+
+    for p in pieces.to_vec() {
         work_queue.push(p);
     }
+
 
     println!("Starting processing");
     async_std::task::block_on(async move {
@@ -132,10 +136,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let shared_state = Arc::new(RwLock::new(SharedState {
             received: 0,
             total: peer_bus.work_queue.len(),
+            done: false,
         }));
 
-        let peers_handle = async_std::task::spawn(peer2::spawner::spawner(us, addresses, peer_bus, shared_state.clone()));
-        let writer_handle = async_std::task::spawn(data_writer::data_writer(output, piece_length, done_rx, work_queue.len(), shared_state.clone()));
+        let peers_handle = async_std::task::spawn(peer2::spawner::spawner(us, addresses, peer_bus, shared_state.clone(), endgame.to_vec()));
+        let writer_handle = async_std::task::spawn(data_writer::data_writer(output, piece_length, done_rx, num_pieces, shared_state.clone()));
         let counter_handle = async_std::task::spawn(counter.start());
 
         writer_handle.await;
@@ -166,7 +171,7 @@ fn gen_peer_id() -> [u8; 20] {
     res
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PieceMeta {
     pub index: usize,
     pub hash: [u8; 20],
