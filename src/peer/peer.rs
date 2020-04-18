@@ -22,6 +22,7 @@ use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::message::Message;
 use crate::PieceMeta;
 use crate::timer::Timer;
+use crate::counter::Event;
 
 const BLOCK_LENGTH: usize = 1 << 14;
 const PIPELINE_LENGTH: usize = 15;
@@ -175,7 +176,7 @@ impl Peer {
                 Some(JobState::Success) => {
                     let j = job.unwrap();
                     msg_bus.send(Message::Have(j.piece.index as u32));
-                    self.peer_bus.counter_tx.send(self.addr).unwrap();
+                    self.peer_bus.counter_tx.send(Event::RecvPiece(self.addr)).unwrap();
                     self.peer_bus
                         .done_tx
                         .send(DownloadedPiece {
@@ -253,7 +254,10 @@ impl Peer {
             Message::NotInterested => self.state.interested = false,
             Message::Have(index) => self.state.bitfield.set(index as usize, true),
             Message::Bitfield(bitfield) => self.state.bitfield = bitfield,
-            Message::Request(_) => { /*TODO*/ }
+            Message::Request(req) => {
+                // TODO
+                self.peer_bus.counter_tx.send(Event::ReqPiece(self.addr)).unwrap();
+            }
             Message::Piece(response) => {
                 let mut job = match job {
                     Some(j) => j,

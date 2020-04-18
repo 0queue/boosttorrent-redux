@@ -1,4 +1,3 @@
-use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
 use flume::RecvError;
@@ -11,6 +10,7 @@ pub use writer::writer;
 use crate::broadcast;
 use crate::peer::Message;
 use crate::PieceMeta;
+use crate::counter::Event;
 
 mod writer;
 
@@ -44,7 +44,7 @@ pub struct PeerBus {
     pub work_tx: async_std::sync::Sender<PieceMeta>,
     pub work_rx: async_std::sync::Receiver<PieceMeta>,
     pub done_tx: Sender<DownloadedPiece>,
-    pub counter_tx: Sender<SocketAddrV4>,
+    pub counter_tx: Sender<Event>,
     pub endgame_rx: broadcast::Receiver<PieceMeta>,
 }
 

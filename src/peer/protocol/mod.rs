@@ -52,10 +52,7 @@ pub async fn receiver(mut stream: ReadHalf<TcpStream>, msg_tx: Sender<Message>) 
     loop {
         let msg = match Message::from(&mut stream).await {
             Ok(m) => m,
-            Err(s) => {
-                eprintln!("error receiving: {}", s);
-                return;
-            }
+            Err(s) => return,
         };
 
         if let Err(_) = msg_tx.send(msg) {
