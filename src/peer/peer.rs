@@ -21,6 +21,7 @@ use crate::peer::protocol;
 use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::message::Message;
 use crate::PieceMeta;
+use crate::timer::Timer;
 
 const BLOCK_LENGTH: usize = 1 << 14;
 const PIPELINE_LENGTH: usize = 15;
@@ -109,6 +110,8 @@ impl Peer {
 
     async fn main(mut self, mut msg_bus: MessageBus) -> Result<SocketAddrV4, SocketAddrV4> {
         let mut job: Option<Job> = None;
+        let mut timer = Timer::new();
+        timer.start(); // because we start out choked
 
         msg_bus.send(Message::Interested);
 
@@ -131,7 +134,7 @@ impl Peer {
         loop {
             // get job from queue if needed
             if self.get_job(&mut job).await {
-                return Ok(self.addr)
+                return Ok(self.addr);
             };
 
             // read lifecycle state, if not dead, try to read for 5 seconds
@@ -157,7 +160,7 @@ impl Peer {
             };
 
             if let Some(m) = msg {
-                self.handle_msg(&mut job, m)
+                self.handle_msg(&mut job, &mut timer, m)
             }
 
             // if job done, send it away, else, else fill pipeline if possible
@@ -183,20 +186,20 @@ impl Peer {
                         .unwrap();
                     job = None;
                 }
-                Some(JobState::InProgress) => {
-                    if !self.state.choked {
-                        let mut j = job.unwrap();
-                        // fill pipeline
-                        while j.in_flight < PIPELINE_LENGTH && j.blocks.len() > 0 {
-                            msg_bus.send(Message::Request(j.blocks.pop().unwrap()));
-                            j.in_flight += 1;
-                        }
-                        job = Some(j)
-                    } else {
-                        // TODO check how long we've been choked
-                        //   if too long, put work back (1 min?)
+                Some(JobState::InProgress) => if !self.state.choked {
+                    let mut j = job.unwrap();
+                    // fill pipeline
+                    while j.in_flight < PIPELINE_LENGTH && j.blocks.len() > 0 {
+                        msg_bus.send(Message::Request(j.blocks.pop().unwrap()));
+                        j.in_flight += 1;
                     }
-                }
+                    job = Some(j)
+                } else if timer.time() > Duration::from_secs(60) {
+                    let j = job.unwrap();
+                    eprintln!("{}: Choked for over a minute, putting {} back", self.addr, j.piece.index);
+                    self.peer_bus.work_tx.send(j.piece).await;
+                    job = None;
+                },
                 None => {}
             }
 
@@ -217,7 +220,9 @@ impl Peer {
                 Err(_) | Ok(None) => {
                     match t(self.peer_bus.endgame_rx.recv()).await {
                         Ok(Ok(m)) => {
-                            job.replace(create_job(m));
+                            if self.state.bitfield[m.index] {
+                                job.replace(create_job(m));
+                            }
                         }
                         Ok(Err(_)) => {
                             // None in queue, time to wrap up
@@ -234,11 +239,16 @@ impl Peer {
         return false;
     }
 
-    fn handle_msg(&mut self, job: &mut Option<Job>, msg: Message) {
-        // println!("{}: received {}", self.addr, msg);
+    fn handle_msg(&mut self, job: &mut Option<Job>, timer: &mut Timer, msg: Message) {
         match msg {
-            Message::Choke => self.state.choked = true,
-            Message::Unchoke => self.state.choked = false,
+            Message::Choke => {
+                timer.start();
+                self.state.choked = true;
+            }
+            Message::Unchoke => {
+                timer.stop();
+                self.state.choked = false;
+            }
             Message::Interested => self.state.interested = true,
             Message::NotInterested => self.state.interested = false,
             Message::Have(index) => self.state.bitfield.set(index as usize, true),

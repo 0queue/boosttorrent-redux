@@ -25,6 +25,7 @@ mod counter;
 mod data;
 mod peer;
 mod tracker;
+mod timer;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
