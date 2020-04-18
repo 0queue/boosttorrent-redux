@@ -1,10 +1,14 @@
+use std::io;
+use std::time::Duration;
+
+use async_std::io::timeout;
 use async_std::net::TcpStream;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use futures::io::ReadHalf;
 use futures::io::WriteHalf;
-use futures::AsyncReadExt;
 use futures::AsyncWriteExt;
+use futures::{AsyncReadExt, Future};
 
 use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::BlockResponse;
@@ -20,6 +24,13 @@ pub enum Message {
     Request(BlockRequest),
     Piece(BlockResponse),
     Cancel(BlockRequest),
+}
+
+async fn t<F, T>(fut: F) -> io::Result<T>
+where
+    F: Future<Output = io::Result<T>>,
+{
+    timeout(Duration::from_secs(15), fut).await
 }
 
 impl std::fmt::Display for Message {
@@ -53,25 +64,19 @@ impl Message {
     pub async fn from(stream: &mut ReadHalf<TcpStream>) -> Result<Message, &'static str> {
         let length = loop {
             let mut length_prefix = [0u8; 4];
-            stream.read_exact(&mut length_prefix).await.map_err(|e| {
-                eprintln!("stream read error: {}", e);
-                "failed to read prefix"
-            })?;
+            if let Err(_) = t(stream.read_exact(&mut length_prefix)).await {
+                return Err("failed to receive prefix");
+            };
             let length = BigEndian::read_u32(&length_prefix[0..]);
             if length != 0 {
                 break length;
-            } else {
-                println!("received keepalive");
             }
         };
 
-        // println!("Received length of {}", length);
-
         let mut body = vec![0u8; length as usize];
-        stream.read_exact(&mut body).await.map_err(|_| {
-            eprintln!("error reading {} bytes", length);
-            "failed to read body"
-        })?;
+        if let Err(_) = t(stream.read_exact(&mut body)).await {
+            return Err("failed to receive body");
+        };
 
         let id = body[0];
         let body = &body[1..];
@@ -104,7 +109,7 @@ impl Message {
         Ok(msg)
     }
 
-    pub async fn send(&self, stream: &mut WriteHalf<TcpStream>) -> Result<(), ()> {
+    pub async fn send(&self, stream: &mut WriteHalf<TcpStream>) -> Result<(), &'static str> {
         let buf = match self {
             Message::Choke => prepare_buf(0, 0),
             Message::Unchoke => prepare_buf(0, 1),
@@ -144,7 +149,11 @@ impl Message {
             }
         };
 
-        stream.write_all(&buf).await.map_err(|_| ())
+        if let Err(_) = timeout(Duration::from_secs(30), stream.write_all(&buf)).await {
+            return Err("failed to send");
+        }
+
+        Ok(())
     }
 }
 

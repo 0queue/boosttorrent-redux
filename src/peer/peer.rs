@@ -123,7 +123,7 @@ impl Peer {
 
         loop {
             // get job from queue if needed
-            if job.is_none() && count_ones(&self.state.bitfield) > 0 {
+            if job.is_none() && count_ones(&self.state.bitfield) > 0 && !self.state.choked {
                 match timeout(Duration::from_secs(2), self.peer_bus.work_rx.recv()).await {
                     Ok(Some(m)) => {
                         if self.state.bitfield[m.index] {
@@ -205,6 +205,9 @@ impl Peer {
                             j.in_flight += 1;
                         }
                         job = Some(j)
+                    } else {
+                        // TODO check how long we've been choked
+                        //   if too long, put work back (1 min?)
                     }
                 }
                 None => {}
