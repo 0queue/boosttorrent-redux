@@ -9,7 +9,6 @@ use async_std::sync::Arc;
 use async_std::sync::RwLock;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-use crossbeam::queue::SegQueue;
 use rand::Rng;
 use structopt::StructOpt;
 

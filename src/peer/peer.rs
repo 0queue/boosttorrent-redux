@@ -2,7 +2,6 @@ use std::cmp::min;
 use std::time::Duration;
 
 use async_std::future::timeout;
-use async_std::future::TimeoutError;
 use async_std::net::SocketAddrV4;
 use async_std::net::TcpStream;
 use bit_vec::BitVec;

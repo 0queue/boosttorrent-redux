@@ -2,14 +2,10 @@ use std::time::Duration;
 
 use async_std::fs::File;
 use async_std::future::timeout;
-use async_std::future::TimeoutError;
 use async_std::io::SeekFrom;
-use async_std::sync::Arc;
-use crossbeam::queue::SegQueue;
 use flume::Receiver;
 use futures::AsyncSeekExt;
 use futures::AsyncWriteExt;
-use futures::StreamExt;
 
 use crate::broadcast;
 use crate::count_ones;

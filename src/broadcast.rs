@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use flume::RecvError;
-use flume::TryRecvError;
 
 #[derive(Clone)]
 pub struct Sender<T: Clone> {
@@ -32,10 +31,6 @@ where
 {
     pub async fn recv(&mut self) -> Result<T, RecvError> {
         self.receiver.recv_async().await
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        self.receiver.try_recv()
     }
 }
 

@@ -1,7 +1,6 @@
 use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
-use crossbeam::queue::SegQueue;
 use flume::Receiver;
 use flume::Sender;
 
