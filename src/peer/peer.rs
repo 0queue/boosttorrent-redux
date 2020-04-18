@@ -2,6 +2,7 @@ use std::cmp::min;
 use std::time::Duration;
 
 use async_std::future::timeout;
+use async_std::future::TimeoutError;
 use async_std::net::SocketAddrV4;
 use async_std::net::TcpStream;
 use bit_vec::BitVec;
@@ -12,13 +13,13 @@ use sha1::Digest;
 use sha1::Sha1;
 
 use crate::count_ones;
-use crate::data::{DownloadedPiece, Lifecycle};
 use crate::data::MessageBus;
 use crate::data::PeerBus;
 use crate::data::SharedState;
+use crate::data::{DownloadedPiece, Lifecycle};
 use crate::peer::protocol;
-use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::message::Message;
+use crate::peer::protocol::BlockRequest;
 use crate::PieceMeta;
 
 pub struct Peer {
@@ -49,7 +50,12 @@ enum JobState {
 }
 
 impl Peer {
-    pub fn new(addr: SocketAddrV4, peer_bus: PeerBus, num_pieces: usize, shared_state: SharedState) -> Peer {
+    pub fn new(
+        addr: SocketAddrV4,
+        peer_bus: PeerBus,
+        num_pieces: usize,
+        shared_state: SharedState,
+    ) -> Peer {
         Peer {
             addr,
             peer_bus,
@@ -103,9 +109,7 @@ impl Peer {
         self.main().await
     }
 
-    async fn main(
-        mut self,
-    ) -> Result<SocketAddrV4, SocketAddrV4> {
+    async fn main(mut self) -> Result<SocketAddrV4, SocketAddrV4> {
         let mut job: Option<Job> = None;
 
         self.send(Message::Interested);
@@ -121,14 +125,25 @@ impl Peer {
         loop {
             // get job from queue if needed
             if job.is_none() && count_ones(&self.state.bitfield) > 0 {
-                match self.peer_bus.work_queue.pop() {
-                    Ok(m) => if self.state.bitfield[m.index] {
-                        job.replace(create_job(m));
-                    } else {
-                        self.peer_bus.work_queue.push(m);
-                    },
-                    Err(_) => {
-                        // TODO need endgame mode
+                match timeout(Duration::from_secs(2), self.peer_bus.work_rx.recv()).await {
+                    Ok(Some(m)) => {
+                        if self.state.bitfield[m.index] {
+                            job.replace(create_job(m));
+                        } else {
+                            self.peer_bus.work_tx.send(m).await;
+                        }
+                    }
+                    Err(_) | Ok(None) => {
+                        match timeout(Duration::from_secs(5), self.peer_bus.endgame_rx.recv()).await
+                        {
+                            Ok(Ok(m)) => {
+                                job.replace(create_job(m));
+                            }
+                            Ok(Err(_)) => {
+                                return Ok(self.addr);
+                            }
+                            Err(_) => { /*nothing*/ }
+                        }
                     }
                 };
             }
@@ -144,7 +159,12 @@ impl Peer {
                 match timeout(Duration::from_secs(5), self.recv()).await {
                     Ok(Ok(m)) => Some(m),
                     Err(_) => None,
-                    Ok(Err(_)) => return Err(self.addr),
+                    Ok(Err(_)) => {
+                        if let Some(j) = job {
+                            self.peer_bus.work_tx.send(j.piece).await;
+                        }
+                        return Err(self.addr);
+                    }
                 }
             } else {
                 self.try_recv().ok()
@@ -160,7 +180,7 @@ impl Peer {
                 Some(JobState::Failed) => {
                     let j = job.unwrap();
                     eprintln!("{}: failed to get {}", self.addr, j.piece.index);
-                    self.peer_bus.work_queue.push(j.piece);
+                    self.peer_bus.work_tx.send(j.piece).await;
                     job = None;
                 }
                 Some(JobState::Success) => {

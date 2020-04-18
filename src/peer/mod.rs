@@ -4,8 +4,8 @@ pub use protocol::message::Message;
 
 use crate::data::PeerBus;
 use crate::data::SharedState;
-use crate::MAX_PEERS;
 use crate::peer::peer::Peer;
+use crate::MAX_PEERS;
 
 mod peer;
 mod protocol;

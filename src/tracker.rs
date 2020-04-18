@@ -1,12 +1,12 @@
 use std::io::Read;
 
-use percent_encoding::NON_ALPHANUMERIC;
 use percent_encoding::percent_encode;
+use percent_encoding::NON_ALPHANUMERIC;
 use sha1::Digest;
 use sha1::Sha1;
 
-use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
+use crate::bencode::BVal;
 
 #[allow(dead_code)]
 pub enum Event {

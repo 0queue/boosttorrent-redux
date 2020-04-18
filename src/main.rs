@@ -13,14 +13,15 @@ use crossbeam::queue::SegQueue;
 use rand::Rng;
 use structopt::StructOpt;
 
-use crate::bencode::BVal;
 use crate::bencode::de::deserialize;
+use crate::bencode::BVal;
 use crate::counter::Counter;
-use crate::data::{DownloadedPiece, Lifecycle};
 use crate::data::PeerBus;
 use crate::data::State;
+use crate::data::{DownloadedPiece, Lifecycle};
 
 mod bencode;
+mod broadcast;
 mod counter;
 mod data;
 mod peer;
@@ -65,10 +66,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{} Addresses: {:?}", addresses.len(), addresses);
 
     let (done_tx, done_rx) = flume::unbounded::<DownloadedPiece>();
-    // let (have_tx, have_rx) = crossbeam::unbounded();
 
-    let work_queue: Arc<SegQueue<PieceMeta>> = Arc::new(SegQueue::new());
     let (counter, counter_tx) = Counter::new();
+    let (endgame_tx, endgame_rx) = broadcast::unbounded();
 
     let output = async_std::task::block_on(async {
         let name = torrent["info"]["name"].string();
@@ -121,35 +121,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let num_pieces = pieces.len();
 
-    for p in pieces.to_vec() {
-        work_queue.push(p);
-    }
+    let (work_tx, work_rx) = async_std::sync::channel(pieces.len());
 
     println!("Starting processing");
     async_std::task::block_on(async move {
+        for p in pieces.to_vec() {
+            work_tx.send(p).await;
+        }
+
         let peer_bus = PeerBus {
-            work_queue: work_queue.clone(),
+            work_tx: work_tx.clone(),
+            work_rx: work_rx.clone(),
             done_tx,
             counter_tx,
+            endgame_rx,
         };
         let shared_state = Arc::new(RwLock::new(State {
             received: 0,
             total: num_pieces,
             lifecycle: Lifecycle::Downloading,
             id,
-            file_hash
+            file_hash,
         }));
 
-        let peers_handle = async_std::task::spawn(peer::spawner(
-            addresses,
-            peer_bus,
-            shared_state.clone()
-        ));
+        let peers_handle =
+            async_std::task::spawn(peer::spawner(addresses, peer_bus, shared_state.clone()));
         let writer_handle = async_std::task::spawn(data::writer(
             output,
             piece_length,
             num_pieces,
             done_rx,
+            endgame_tx,
+            work_rx.clone(),
             shared_state.clone(),
         ));
         let counter_handle = async_std::task::spawn(counter.start());
@@ -160,7 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "Counter: {:#?}\nwork_queue.len(): {}",
             counter_handle.await,
-            work_queue.len()
+            work_rx.len()
         );
     });
 

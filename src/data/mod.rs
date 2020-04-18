@@ -7,6 +7,7 @@ use flume::Sender;
 
 pub use writer::writer;
 
+use crate::broadcast;
 use crate::peer::Message;
 use crate::PieceMeta;
 
@@ -39,9 +40,11 @@ pub struct DownloadedPiece {
 
 #[derive(Clone)]
 pub struct PeerBus {
-    pub work_queue: Arc<SegQueue<PieceMeta>>,
+    pub work_tx: async_std::sync::Sender<PieceMeta>,
+    pub work_rx: async_std::sync::Receiver<PieceMeta>,
     pub done_tx: Sender<DownloadedPiece>,
     pub counter_tx: Sender<SocketAddrV4>,
+    pub endgame_rx: broadcast::Receiver<PieceMeta>,
 }
 
 pub struct MessageBus {

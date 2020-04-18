@@ -1,10 +1,10 @@
 use async_std::net::TcpStream;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-use futures::AsyncReadExt;
-use futures::AsyncWriteExt;
 use futures::io::ReadHalf;
 use futures::io::WriteHalf;
+use futures::AsyncReadExt;
+use futures::AsyncWriteExt;
 
 use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::BlockResponse;

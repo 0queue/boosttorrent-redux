@@ -6,7 +6,11 @@ use futures::AsyncReadExt;
 
 pub const PROTOCOL: &[u8; 20] = b"\x13BitTorrent protocol";
 
-pub async fn handshake(stream: &mut TcpStream, id: &[u8], file_hash: &[u8]) -> Result<(), &'static str> {
+pub async fn handshake(
+    stream: &mut TcpStream,
+    id: &[u8],
+    file_hash: &[u8],
+) -> Result<(), &'static str> {
     stream
         .write(PROTOCOL)
         .await
@@ -20,10 +24,7 @@ pub async fn handshake(stream: &mut TcpStream, id: &[u8], file_hash: &[u8]) -> R
         .await
         .map_err(|_| "failed to write file hash")?;
 
-    stream
-        .write(id)
-        .await
-        .map_err(|_| "failed to write id")?;
+    stream.write(id).await.map_err(|_| "failed to write id")?;
 
     let mut buf = [0u8; 20 + 8 + 20 + 20];
     async_std::io::timeout(Duration::from_secs(5), stream.read_exact(&mut buf))
