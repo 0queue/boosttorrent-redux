@@ -37,7 +37,7 @@ pub async fn handshake(
     let mut buf = [0u8; 20 + 8 + 20 + 20];
     t(stream.read_exact(&mut buf))
         .await
-        .map_err(|e| "failed to read handshake")?;
+        .map_err(|_| "failed to read handshake")?;
 
     let (protocol, _flags, their_hash, _their_id) =
         (&buf[0..20], &buf[20..28], &buf[28..48], &buf[48..68]);

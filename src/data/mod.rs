@@ -1,7 +1,9 @@
 use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
+use flume::RecvError;
 use flume::Receiver;
+use flume::TryRecvError;
 use flume::Sender;
 
 pub use writer::writer;
@@ -49,4 +51,18 @@ pub struct PeerBus {
 pub struct MessageBus {
     pub tx: Sender<Message>,
     pub rx: Receiver<Message>,
+}
+
+impl MessageBus {
+    pub fn send(&self, msg: Message) {
+        self.tx.send(msg).unwrap()
+    }
+
+    pub async fn recv(&mut self) -> Result<Message, RecvError> {
+        self.rx.recv_async().await
+    }
+
+    pub fn try_recv(&mut self) -> Result<Message, TryRecvError> {
+        self.rx.try_recv()
+    }
 }
