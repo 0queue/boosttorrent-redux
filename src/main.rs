@@ -1,4 +1,6 @@
 use std::cmp::min;
+use std::io::stdout;
+use std::io::Write;
 use std::path::PathBuf;
 
 use async_std::fs::File;
@@ -9,16 +11,19 @@ use async_std::sync::Arc;
 use async_std::sync::RwLock;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
+use futures::AsyncWriteExt;
+use md5::Digest;
+use md5::Md5;
 use rand::Rng;
 use structopt::StructOpt;
 
-use crate::bencode::de::deserialize;
 use crate::bencode::BVal;
+use crate::bencode::de::deserialize;
 use crate::counter::Counter;
-use crate::data::PeerBus;
-use crate::data::State;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
+use crate::data::PeerBus;
+use crate::data::State;
 use crate::timer::Timer;
 
 mod bencode;
@@ -34,22 +39,27 @@ mod timer;
 struct Args {
     #[structopt(parse(from_os_str))]
     torrent_file_path: PathBuf,
+
+    #[structopt(long)]
+    md5sum: Option<String>,
 }
 
 const MAX_PEERS: usize = 20;
 
 // TODO small features to add:
 //  * built in timing
-//  - hash checking
+//  * hash checking
 //  - graceful ctrl c exits
 //  - colored output (better logs in general)
 //  - bitvec ext trait to add ones() and zeroes()
+//  - unlimited peers
+//  - correct reports to the tracker at the end
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut timer = Timer::new();
     timer.start();
 
     let args: Args = Args::from_args();
-    let contents = std::fs::read(args.torrent_file_path)?;
+    let contents = std::fs::read(args.torrent_file_path.clone())?;
     let torrent = deserialize(&contents)?;
 
     let id = gen_peer_id();
@@ -81,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (counter, counter_tx) = Counter::new();
     let (endgame_tx, endgame_rx) = broadcast::unbounded();
 
-    let output = async_std::task::block_on(async {
+    let mut output = async_std::task::block_on(async {
         let name = torrent["info"]["name"].string();
         if Path::new(&name).exists().await {
             println!("File already exists, overwriting: {}", name);
@@ -90,8 +100,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         File::create(name).await.unwrap()
     });
 
+    let md5sum = args.md5sum.as_ref().map(|s| hex::decode(s).unwrap());
+
     let piece_length = torrent["info"]["piece length"].integer();
     let piece_hashes = torrent["info"]["pieces"].bytes();
+    let file_length = torrent["info"]["length"].integer() as usize;
 
     if piece_hashes.len() % 20 != 0 {
         panic!("piece hash array length not a multiple of 20");
@@ -108,10 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hash.copy_from_slice(chunk);
             let piece_length = {
                 let start = index * piece_length as usize;
-                let end = min(
-                    start + piece_length as usize,
-                    torrent["info"]["length"].integer() as usize,
-                );
+                let end = min(start + piece_length as usize, file_length);
                 end - start
             };
             PieceMeta {
@@ -158,9 +168,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let peers_handle =
             async_std::task::spawn(peer::spawner(addresses, peer_bus, shared_state.clone()));
         let writer_handle = async_std::task::spawn(data::writer(
-            output,
             piece_length,
             num_pieces,
+            file_length,
             done_rx,
             endgame_tx,
             work_rx.clone(),
@@ -168,8 +178,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
         let counter_handle = async_std::task::spawn(counter.start());
 
-        writer_handle.await;
         peers_handle.await;
+        let data = {
+            let data = writer_handle.await;
+
+            if let Some(hash) = md5sum {
+                let mut hasher = Md5::new();
+                hasher.input(&data);
+                let result = hasher.result();
+                if result.as_slice() == hash.as_slice() {
+                    println!("md5sum matches!");
+                    Some(data)
+                } else {
+                    eprintln!("Expected {}", args.md5sum.unwrap());
+                    eprintln!("Found    {}", hex::encode(&result));
+                    None
+                }
+            } else {
+                Some(data)
+            }
+        };
+
+        if let Some(data) = data {
+            println!("writing data");
+            stdout().flush().unwrap();
+            output.write_all(&data).await.unwrap();
+            output.sync_all().await.unwrap();
+        }
 
         println!(
             "Counter: {:#?}\nwork_queue.len(): {}",

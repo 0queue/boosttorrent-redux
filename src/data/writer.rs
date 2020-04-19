@@ -1,11 +1,7 @@
 use std::time::Duration;
 
-use async_std::fs::File;
 use async_std::future::timeout;
-use async_std::io::SeekFrom;
 use flume::Receiver;
-use futures::AsyncSeekExt;
-use futures::AsyncWriteExt;
 
 use crate::broadcast;
 use crate::count_ones;
@@ -15,27 +11,25 @@ use crate::data::SharedState;
 use crate::PieceMeta;
 
 pub async fn writer(
-    mut output: File,
     piece_length: i64,
     num_pieces: usize,
+    file_length: usize,
     mut done_rx: Receiver<DownloadedPiece>,
     endgame_tx: broadcast::Sender<PieceMeta>,
     work_rx: async_std::sync::Receiver<PieceMeta>,
     shared_state: SharedState,
-) {
+) -> Vec<u8> {
     println!("Starting finished work receiver");
     let mut bitfield = bit_vec::BitVec::from_elem(num_pieces, false);
     let mut forward_handle: Option<_> = None;
+    let mut output = vec![0u8; file_length];
     loop {
         match done_rx.recv_async().await {
             Ok(p) => {
                 if !bitfield[p.index] {
-                    // write to disk
-                    output
-                        .seek(SeekFrom::Start((p.index * piece_length as usize) as u64))
-                        .await
-                        .unwrap();
-                    output.write_all(&p.data).await.unwrap();
+                    let start = p.index * piece_length as usize;
+                    let end = start + p.data.len();
+                    output[start..end].copy_from_slice(&p.data);
 
                     // update state
                     bitfield.set(p.index, true);
@@ -55,11 +49,6 @@ pub async fn writer(
                     };
 
                     if lifecycle == Lifecycle::Endgame && forward_handle.is_none() {
-                        // TODO change endgame mode to start when there are x pieces remaining
-                        //   right now if it detects there are ten missing, they may already
-                        //   be claimed
-
-                        // TODO receive timeouts on peers?
                         let s = shared_state.clone();
                         let w = work_rx.clone();
                         let e = endgame_tx.clone();
@@ -98,8 +87,10 @@ pub async fn writer(
         }
     }
 
-    output.sync_all().await.unwrap();
+    // output.sync_all().await.unwrap();
     println!("Done (zeroes: {:?})", zeroes(&bitfield));
+
+    output
 }
 
 fn zeroes(bitfield: &bit_vec::BitVec) -> Vec<usize> {
