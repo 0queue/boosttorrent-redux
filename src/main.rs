@@ -17,7 +17,9 @@ use crate::bencode::BVal;
 use crate::counter::Counter;
 use crate::data::PeerBus;
 use crate::data::State;
-use crate::data::{DownloadedPiece, Lifecycle};
+use crate::data::DownloadedPiece;
+use crate::data::Lifecycle;
+use crate::timer::Timer;
 
 mod bencode;
 mod broadcast;
@@ -36,7 +38,16 @@ struct Args {
 
 const MAX_PEERS: usize = 20;
 
+// TODO small features to add:
+//  * built in timing
+//  - hash checking
+//  - graceful ctrl c exits
+//  - colored output (better logs in general)
+//  - bitvec ext trait to add ones() and zeroes()
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut timer = Timer::new();
+    timer.start();
+
     let args: Args = Args::from_args();
     let contents = std::fs::read(args.torrent_file_path)?;
     let torrent = deserialize(&contents)?;
@@ -168,6 +179,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped);
+
+    let total_time_secs = timer.time().as_secs();
+    let mins = total_time_secs / 60;
+    let secs = total_time_secs % 60;
+    println!("Total time: {}:{}", mins, secs);
 
     Ok(())
 }

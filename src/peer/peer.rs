@@ -254,7 +254,7 @@ impl Peer {
             Message::NotInterested => self.state.interested = false,
             Message::Have(index) => self.state.bitfield.set(index as usize, true),
             Message::Bitfield(bitfield) => self.state.bitfield = bitfield,
-            Message::Request(req) => {
+            Message::Request(_) => {
                 // TODO
                 self.peer_bus.counter_tx.send(Event::ReqPiece(self.addr)).unwrap();
             }
