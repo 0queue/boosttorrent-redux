@@ -4,11 +4,11 @@ use async_std::future::timeout;
 use flume::Receiver;
 
 use crate::broadcast;
-use crate::count_ones;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::SharedState;
 use crate::PieceMeta;
+use crate::bitvec_ext::BitVecExt;
 
 pub async fn writer(
     piece_length: i64,
@@ -42,7 +42,7 @@ pub async fn writer(
                             write.lifecycle = Lifecycle::Endgame;
                             println!("Endgame triggered");
                             println!("  work_rx.len(): {}", work_rx.len());
-                            println!("  zeroes: {:?}", zeroes(&bitfield));
+                            println!("  zeroes: {:?}", bitfield.zeroes());
                         }
 
                         write.lifecycle
@@ -70,7 +70,7 @@ pub async fn writer(
                         }));
                     }
 
-                    let ones = count_ones(&bitfield);
+                    let ones = bitfield.ones().len();
                     let percent = ones as f32 / num_pieces as f32;
                     println!(
                         "Finished with {:?}. Completed: {} / {} = {}",
@@ -87,16 +87,7 @@ pub async fn writer(
         }
     }
 
-    // output.sync_all().await.unwrap();
-    println!("Done (zeroes: {:?})", zeroes(&bitfield));
+    println!("Done (zeroes: {:?})", bitfield.zeroes());
 
     output
-}
-
-fn zeroes(bitfield: &bit_vec::BitVec) -> Vec<usize> {
-    bitfield
-        .iter()
-        .enumerate()
-        .filter_map(|(i, b)| if !b { Some(i) } else { None })
-        .collect()
 }

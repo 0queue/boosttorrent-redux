@@ -11,7 +11,6 @@ use futures::Future;
 use sha1::Digest;
 use sha1::Sha1;
 
-use crate::count_ones;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::MessageBus;
@@ -23,6 +22,7 @@ use crate::peer::protocol::message::Message;
 use crate::PieceMeta;
 use crate::timer::Timer;
 use crate::counter::Event;
+use crate::bitvec_ext::BitVecExt;
 
 const BLOCK_LENGTH: usize = 1 << 14;
 const PIPELINE_LENGTH: usize = 15;
@@ -209,7 +209,7 @@ impl Peer {
     }
 
     async fn get_job(&mut self, job: &mut Option<Job>) -> bool {
-        if job.is_none() && count_ones(&self.state.bitfield) > 0 && !self.state.choked {
+        if job.is_none() && self.state.bitfield.ones().len() > 0 && !self.state.choked {
             match t(self.peer_bus.work_rx.recv()).await {
                 Ok(Some(m)) => {
                     if self.state.bitfield[m.index] {

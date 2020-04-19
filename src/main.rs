@@ -33,6 +33,7 @@ mod data;
 mod peer;
 mod tracker;
 mod timer;
+mod bitvec_ext;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -241,8 +242,4 @@ pub struct PieceMeta {
     pub index: usize,
     pub hash: [u8; 20],
     pub length: usize,
-}
-
-fn count_ones(bitfield: &bit_vec::BitVec) -> usize {
-    bitfield.iter().filter(|&e| e).count()
 }
