@@ -5,7 +5,6 @@ pub use protocol::message::Message;
 use crate::data::PeerBus;
 use crate::data::SharedState;
 use crate::peer::peer::Peer;
-use crate::MAX_PEERS;
 
 mod peer;
 mod protocol;
@@ -17,7 +16,7 @@ pub async fn spawner(
     shared_state: SharedState,
 ) {
     let mut active_peers = Vec::new();
-    let mut target_num_peers = MAX_PEERS;
+    let mut target_num_peers = addresses.len();
 
     loop {
         while active_peers.len() < target_num_peers {

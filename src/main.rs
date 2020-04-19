@@ -45,16 +45,15 @@ struct Args {
     md5sum: Option<String>,
 }
 
-const MAX_PEERS: usize = 20;
-
 // TODO small features to add:
 //  * built in timing
 //  * hash checking
 //  - graceful ctrl c exits
 //  - colored output (better logs in general)
-//  - bitvec ext trait to add ones() and zeroes()
-//  - unlimited peers
+//  * bitvec ext trait to add ones() and zeroes()
+//  * unlimited peers
 //  - correct reports to the tracker at the end
+//  * add keep alives so that when the last peer dies with the last piece we can actually finish downloading
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut timer = Timer::new();
     timer.start();
@@ -185,6 +184,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(hash) = md5sum {
                 let mut hasher = Md5::new();
+                println!("Starting md5 hash");
+                stdout().flush().unwrap();
                 hasher.input(&data);
                 let result = hasher.result();
                 if result.as_slice() == hash.as_slice() {
@@ -216,7 +217,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped);
 
-    let total_time_secs = timer.time().as_secs();
+    let total_time_secs = timer.time().unwrap().as_secs();
     let mins = total_time_secs / 60;
     let secs = total_time_secs % 60;
     println!("Total time: {}:{}", mins, secs);

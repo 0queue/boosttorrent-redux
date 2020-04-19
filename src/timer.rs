@@ -15,8 +15,8 @@ impl Timer {
         self.start.replace(Instant::now());
     }
 
-    pub fn time(&self) -> Duration {
-        Instant::now() - self.start.unwrap()
+    pub fn time(&self) -> Option<Duration> {
+        self.start.map(|i| Instant::now() - i)
     }
 
     pub fn stop(&mut self) {

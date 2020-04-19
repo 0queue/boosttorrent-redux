@@ -24,6 +24,7 @@ pub enum Message {
     Request(BlockRequest),
     Piece(BlockResponse),
     Cancel(BlockRequest),
+    KeepAlive,
 }
 
 async fn t<F, T>(fut: F) -> io::Result<T>
@@ -54,6 +55,7 @@ impl std::fmt::Display for Message {
                 "Message::Cancel(index: {}, begin: {}, length: {}",
                 req.index, req.begin, req.length
             ),
+            Message::KeepAlive => "Message::KeepAlive".to_string()
         };
 
         write!(f, "{}", res)
@@ -70,6 +72,8 @@ impl Message {
             let length = BigEndian::read_u32(&length_prefix[0..]);
             if length != 0 {
                 break length;
+            } else {
+                return Ok(Message::KeepAlive);
             }
         };
 
@@ -145,6 +149,11 @@ impl Message {
                 BigEndian::write_u32(&mut buf[5..], block_req.index);
                 BigEndian::write_u32(&mut buf[9..], block_req.begin);
                 BigEndian::write_u32(&mut buf[13..], block_req.length);
+                buf
+            }
+            Message::KeepAlive => {
+                let mut buf = vec![0u8; 4];
+                BigEndian::write_u32(&mut buf, 0);
                 buf
             }
         };

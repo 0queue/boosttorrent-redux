@@ -112,6 +112,7 @@ impl Peer {
     async fn main(mut self, mut msg_bus: MessageBus) -> Result<SocketAddrV4, SocketAddrV4> {
         let mut job: Option<Job> = None;
         let mut timer = Timer::new();
+        let mut keepalive = Timer::new();
         timer.start(); // because we start out choked
 
         msg_bus.send(Message::Interested);
@@ -176,6 +177,7 @@ impl Peer {
                 Some(JobState::Success) => {
                     let j = job.unwrap();
                     msg_bus.send(Message::Have(j.piece.index as u32));
+                    keepalive.start();
                     self.peer_bus.counter_tx.send(Event::RecvPiece(self.addr)).unwrap();
                     self.peer_bus
                         .done_tx
@@ -192,16 +194,24 @@ impl Peer {
                     // fill pipeline
                     while j.in_flight < PIPELINE_LENGTH && j.blocks.len() > 0 {
                         msg_bus.send(Message::Request(j.blocks.pop().unwrap()));
+                        keepalive.start();
                         j.in_flight += 1;
                     }
                     job = Some(j)
-                } else if timer.time() > Duration::from_secs(60) {
+                } else if timer.time().unwrap() > Duration::from_secs(60) {
                     let j = job.unwrap();
                     eprintln!("{}: Choked for over a minute, putting {} back", self.addr, j.piece.index);
                     self.peer_bus.work_tx.send(j.piece).await;
                     job = None;
                 },
                 None => {}
+            }
+
+            if let Some(d) = keepalive.time() {
+                if d > Duration::from_secs(90) {
+                    msg_bus.send(Message::KeepAlive);
+                    keepalive.start();
+                }
             }
 
             async_std::task::yield_now().await;
@@ -272,6 +282,7 @@ impl Peer {
                 }
             }
             Message::Cancel(_) => { /*TODO*/ }
+            Message::KeepAlive => { /*nothing*/ }
         }
     }
 }
