@@ -293,11 +293,7 @@ impl Job {
             return JobState::InProgress;
         }
 
-        let mut hasher = Sha1::new();
-        hasher.input(&self.data);
-        let hash = hasher.result();
-
-        if hash.as_slice() == self.piece.hash {
+        if Sha1::digest(&self.data).as_slice() == self.piece.hash {
             JobState::Success
         } else {
             JobState::Failed

@@ -54,6 +54,12 @@ struct Args {
 //  * unlimited peers
 //  - correct reports to the tracker at the end
 //  * add keep alives so that when the last peer dies with the last piece we can actually finish downloading
+
+// TODO larger features:
+//  - proper have broadcasting
+//  - bitfield broadcasting
+//  - cache on disk, not memory
+//  - endgame: cancel messages
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut timer = Timer::new();
     timer.start();
@@ -183,11 +189,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let data = writer_handle.await;
 
             if let Some(hash) = md5sum {
-                let mut hasher = Md5::new();
                 println!("Starting md5 hash");
                 stdout().flush().unwrap();
-                hasher.input(&data);
-                let result = hasher.result();
+                let result = Md5::digest(&data);
                 if result.as_slice() == hash.as_slice() {
                     println!("md5sum matches!");
                     Some(data)
@@ -220,7 +224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total_time_secs = timer.time().unwrap().as_secs();
     let mins = total_time_secs / 60;
     let secs = total_time_secs % 60;
-    println!("Total time: {}:{}", mins, secs);
+    println!("Total time: {}:{:02}", mins, secs);
 
     Ok(())
 }

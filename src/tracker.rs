@@ -1,12 +1,10 @@
 use std::io::Read;
 
-use percent_encoding::percent_encode;
 use percent_encoding::NON_ALPHANUMERIC;
-use sha1::Digest;
-use sha1::Sha1;
+use percent_encoding::percent_encode;
 
-use crate::bencode::de::deserialize;
 use crate::bencode::BVal;
+use crate::bencode::de::deserialize;
 
 #[allow(dead_code)]
 pub enum Event {
@@ -28,12 +26,7 @@ impl std::fmt::Display for Event {
 }
 
 pub fn announce(torrent: &BVal, id: &[u8; 20], port: u16, event: Event) -> BVal {
-    let info_hash = {
-        let bencoded = torrent["info"].serialize();
-        let mut hasher = Sha1::new();
-        hasher.input(&bencoded);
-        percent_encode(&hasher.result(), NON_ALPHANUMERIC).to_string()
-    };
+    let info_hash = percent_encode(&torrent["info"].hash(), NON_ALPHANUMERIC).to_string();
 
     let peer_id = percent_encode(id, NON_ALPHANUMERIC).to_string();
     let left = torrent["info"]["length"].integer();

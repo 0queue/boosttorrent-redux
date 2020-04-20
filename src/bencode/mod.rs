@@ -41,11 +41,8 @@ impl BVal {
     }
 
     pub fn hash(&self) -> [u8; 20] {
-        let bencoded = self.serialize();
-        let mut hasher = Sha1::new();
-        hasher.input(&bencoded);
         let mut hash = [0u8; 20];
-        hash.copy_from_slice(&hasher.result());
+        hash.copy_from_slice(&Sha1::digest(&self.serialize()));
         hash
     }
 
