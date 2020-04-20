@@ -11,6 +11,8 @@ use futures::Future;
 use sha1::Digest;
 use sha1::Sha1;
 
+use crate::bitvec_ext::BitVecExt;
+use crate::counter::Event;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::MessageBus;
@@ -21,8 +23,6 @@ use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::message::Message;
 use crate::PieceMeta;
 use crate::timer::Timer;
-use crate::counter::Event;
-use crate::bitvec_ext::BitVecExt;
 
 const BLOCK_LENGTH: usize = 1 << 14;
 const PIPELINE_LENGTH: usize = 15;
@@ -72,7 +72,7 @@ impl Peer {
         }
     }
 
-    pub async fn start(self) -> Result<SocketAddrV4, SocketAddrV4> {
+    pub async fn start(self) -> Result<SocketAddrV4, (SocketAddrV4, Duration)> {
         println!("{}: Starting", self.addr);
 
         let stream = async_std::io::timeout(Duration::from_secs(5), TcpStream::connect(self.addr));
@@ -80,7 +80,7 @@ impl Peer {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("{}: Failed to start: {}", self.addr, e);
-                return Err(self.addr);
+                return Err((self.addr, Duration::from_millis(0)));
             }
         };
 
@@ -109,7 +109,7 @@ impl Peer {
         self.main(msg_bus).await
     }
 
-    async fn main(mut self, mut msg_bus: MessageBus) -> Result<SocketAddrV4, SocketAddrV4> {
+    async fn main(mut self, mut msg_bus: MessageBus) -> Result<SocketAddrV4, (SocketAddrV4, Duration)> {
         let mut job: Option<Job> = None;
         let mut timer = Timer::new();
         let mut keepalive = Timer::new();
@@ -122,7 +122,7 @@ impl Peer {
             _ => {
                 // TODO not necessary to exit here
                 eprintln!("{}: did not receive bitfield", self.addr);
-                return Err(self.addr);
+                return Err((self.addr, Duration::from_millis(0)));
             }
         }
 
@@ -154,7 +154,7 @@ impl Peer {
                         if let Some(j) = job {
                             self.peer_bus.work_tx.send(j.piece).await;
                         }
-                        return Err(self.addr);
+                        return Err((self.addr, keepalive.time().unwrap_or(Duration::from_millis(0))));
                     }
                 }
             } else {
@@ -230,11 +230,9 @@ impl Peer {
                 }
                 Err(_) | Ok(None) => {
                     match t(self.peer_bus.endgame_rx.recv()).await {
-                        Ok(Ok(m)) => {
-                            if self.state.bitfield[m.index] {
-                                job.replace(create_job(m));
-                            }
-                        }
+                        Ok(Ok(m)) => if self.state.bitfield[m.index] {
+                            job.replace(create_job(m));
+                        },
                         Ok(Err(_)) => {
                             // None in queue, time to wrap up
                             return true;

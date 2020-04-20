@@ -5,6 +5,7 @@ pub use protocol::message::Message;
 use crate::data::PeerBus;
 use crate::data::SharedState;
 use crate::peer::peer::Peer;
+use crate::duration_ext::DurationExt;
 
 mod peer;
 mod protocol;
@@ -36,11 +37,12 @@ pub async fn spawner(
         let (res, _, others) = futures::future::select_all(active_peers).await;
         active_peers = others;
         match res {
-            Result::Err(address) => println!(
-                "Peer died {}. Active {}. Remaining {}",
+            Result::Err((address, duration)) => println!(
+                "Peer died {}. Active {}. Remaining {}.  Keep-alive timer: {}",
                 address,
                 active_peers.len(),
-                addresses.len()
+                addresses.len(),
+                duration.time_fmt()
             ),
             Result::Ok(_) => target_num_peers -= 1,
         }

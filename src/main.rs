@@ -25,6 +25,7 @@ use crate::data::Lifecycle;
 use crate::data::PeerBus;
 use crate::data::State;
 use crate::timer::Timer;
+use crate::duration_ext::DurationExt;
 
 mod bencode;
 mod broadcast;
@@ -34,6 +35,7 @@ mod peer;
 mod tracker;
 mod timer;
 mod bitvec_ext;
+mod duration_ext;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -54,6 +56,7 @@ struct Args {
 //  * unlimited peers
 //  * correct reports to the tracker at the end
 //  * add keep alives so that when the last peer dies with the last piece we can actually finish downloading
+//  - simple spawner
 
 // TODO larger features:
 //  - proper have broadcasting
@@ -228,10 +231,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped(downloaded));
 
-    let total_time_secs = timer.time().unwrap().as_secs();
-    let mins = total_time_secs / 60;
-    let secs = total_time_secs % 60;
-    println!("Total time: {}:{:02}", mins, secs);
+    println!("Total time: {}", timer.time().unwrap().time_fmt());
 
     Ok(())
 }
