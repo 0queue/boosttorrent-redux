@@ -52,7 +52,7 @@ struct Args {
 //  - colored output (better logs in general)
 //  * bitvec ext trait to add ones() and zeroes()
 //  * unlimited peers
-//  - correct reports to the tracker at the end
+//  * correct reports to the tracker at the end
 //  * add keep alives so that when the last peer dies with the last piece we can actually finish downloading
 
 // TODO larger features:
@@ -151,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (work_tx, work_rx) = async_std::sync::channel(pieces.len());
 
     println!("Starting processing");
-    async_std::task::block_on(async move {
+    let downloaded = async_std::task::block_on(async move {
         for p in pieces.to_vec() {
             work_tx.send(p).await;
         }
@@ -191,10 +191,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(hash) = md5sum {
                 println!("Starting md5 hash");
                 stdout().flush().unwrap();
-                let result = Md5::digest(&data);
+                let arced = async_std::sync::Arc::new(data);
+                let r = arced.clone();
+                let result = async_std::task::spawn_blocking(move || Md5::digest(&r)).await;
                 if result.as_slice() == hash.as_slice() {
                     println!("md5sum matches!");
-                    Some(data)
+                    Some(async_std::sync::Arc::try_unwrap(arced).unwrap())
                 } else {
                     eprintln!("Expected {}", args.md5sum.unwrap());
                     eprintln!("Found    {}", hex::encode(&result));
@@ -205,21 +207,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        if let Some(data) = data {
+        let downloaded = if let Some(data) = data {
             println!("writing data");
             stdout().flush().unwrap();
             output.write_all(&data).await.unwrap();
             output.sync_all().await.unwrap();
-        }
+            data.len()
+        } else {
+            0
+        };
 
         println!(
             "Counter: {:#?}\nwork_queue.len(): {}",
             counter_handle.await,
             work_rx.len()
         );
+
+        downloaded
     });
 
-    tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped);
+    tracker::announce(&torrent, &id, 6881, tracker::Event::Stopped(downloaded));
 
     let total_time_secs = timer.time().unwrap().as_secs();
     let mins = total_time_secs / 60;

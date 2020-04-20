@@ -10,7 +10,7 @@ use crate::bencode::de::deserialize;
 pub enum Event {
     Started,
     Completed,
-    Stopped,
+    Stopped(usize),
 }
 
 impl std::fmt::Display for Event {
@@ -18,7 +18,7 @@ impl std::fmt::Display for Event {
         let s = match self {
             Event::Started => "started",
             Event::Completed => "completed",
-            Event::Stopped => "stopped",
+            Event::Stopped(_) => "stopped",
         };
 
         write!(f, "{}", s)
@@ -29,7 +29,13 @@ pub fn announce(torrent: &BVal, id: &[u8; 20], port: u16, event: Event) -> BVal 
     let info_hash = percent_encode(&torrent["info"].hash(), NON_ALPHANUMERIC).to_string();
 
     let peer_id = percent_encode(id, NON_ALPHANUMERIC).to_string();
-    let left = torrent["info"]["length"].integer();
+
+    let downloaded = match event {
+        Event::Stopped(d) => d,
+        _ => 0
+    };
+
+    let left = torrent["info"]["length"].integer() - downloaded as i64;
 
     let mut request = ureq::get(&torrent["announce"].string());
     request
@@ -39,7 +45,7 @@ pub fn announce(torrent: &BVal, id: &[u8; 20], port: u16, event: Event) -> BVal 
         .query("event", &event.to_string())
         .query("compact", "1")
         .query("uploaded", "0")
-        .query("downloaded", "0")
+        .query("downloaded", &downloaded.to_string())
         .query("left", &left.to_string());
 
     println!("Announcing: {:?}", request);
