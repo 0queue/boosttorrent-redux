@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (work_tx, work_rx) = async_std::sync::channel(pieces.len());
 
     let haves = Arc::new(RwLock::new(Vec::new()));
-    let pieces = Arc::new(RwLock::new(pieces));
+    let pieces = Arc::new(pieces); // could even be lazy static?
 
     println!("Starting processing");
     let downloaded = async_std::task::block_on(async move {
@@ -170,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             counter_tx,
             endgame_rx,
             haves: haves.clone(),
-            pieces: pieces.clone()
+            pieces: pieces.clone(),
         };
         let shared_state = Arc::new(RwLock::new(State {
             received: 0,

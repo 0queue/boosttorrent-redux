@@ -77,7 +77,7 @@ impl Peer {
     pub async fn start(self) -> Result<SocketAddrV4, (SocketAddrV4, Duration)> {
         println!("{}: Starting", self.addr);
 
-        let stream = async_std::io::timeout(Duration::from_secs(60), TcpStream::connect(self.addr));
+        let stream = async_std::io::timeout(Duration::from_secs(45), TcpStream::connect(self.addr));
         let mut stream = match stream.await {
             Ok(s) => s,
             Err(e) => {
@@ -167,6 +167,14 @@ impl Peer {
                 self.handle_msg(&mut job, &mut timer, m)
             }
 
+            for have in self.get_haves().await {
+                msg_bus.send(Message::Have(have as u32));
+            }
+
+            keepalive.start();
+
+            // TODO process haves and cancel as necessary here
+
             // if job done, send it away, else, else fill pipeline if possible
             let job_state = job.as_ref().map(|j| j.state());
             match job_state {
@@ -209,12 +217,6 @@ impl Peer {
                 None => {}
             }
 
-            for have in self.get_haves().await {
-                msg_bus.send(Message::Have(have as u32));
-            }
-
-            keepalive.start();
-
             if let Some(d) = keepalive.time() {
                 if d > Duration::from_secs(90) {
                     msg_bus.send(Message::KeepAlive);
@@ -231,7 +233,7 @@ impl Peer {
             match t(self.peer_bus.work_rx.recv()).await {
                 Ok(Some(m)) => {
                     if self.state.bitfield[m] {
-                        job.replace(create_job(self.peer_bus.pieces.read().await[m].clone()));
+                        job.replace(create_job(self.peer_bus.pieces[m].clone()));
                     } else {
                         self.peer_bus.work_tx.send(m).await;
                     }
@@ -239,7 +241,7 @@ impl Peer {
                 Err(_) | Ok(None) => {
                     match t(self.peer_bus.endgame_rx.recv()).await {
                         Ok(Ok(m)) => if self.state.bitfield[m] {
-                            job.replace(create_job(self.peer_bus.pieces.read().await[m].clone()));
+                            job.replace(create_job(self.peer_bus.pieces[m].clone()));
                         },
                         Ok(Err(_)) => {
                             // None in queue, time to wrap up

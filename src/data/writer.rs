@@ -23,7 +23,6 @@ pub async fn writer(
 ) -> Vec<u8> {
     println!("Starting finished work receiver");
     let mut bitfield = bit_vec::BitVec::from_elem(num_pieces, false);
-    let mut forward_handle: Option<_> = None;
     let mut output = vec![0u8; file_length];
     loop {
         match done_rx.recv_async().await {
@@ -47,40 +46,11 @@ pub async fn writer(
                             println!("Endgame triggered");
                             println!("  work_rx.len(): {}", work_rx.len());
                             println!("  zeroes: {:?}", bitfield.zeroes());
-                            // endgame_tx.random_send_all(bitfield.zeroes().map(|e| {
-                            //     PieceMeta {
-                            //         index: e,
-                            //         hash: [],
-                            //         length: 0
-                            //     }
-                            // }));
+                            endgame_tx.random_send_all(&bitfield.zeroes());
                         }
 
                         write.lifecycle
                     };
-
-                    if lifecycle == Lifecycle::Endgame && forward_handle.is_none() {
-                        let s = shared_state.clone();
-                        let w = work_rx.clone();
-                        let e = endgame_tx.clone();
-                        forward_handle = Some(async_std::task::spawn(async move {
-                            println!("Starting endgame mode");
-                            loop {
-                                // TODO if an endgame peer dies with an endgame piece it gets
-                                //   rebroadcasted... should switch to a zeroes approach at
-                                //   some point
-                                match timeout(Duration::from_secs(5), w.recv()).await {
-                                    Ok(Some(p)) => {
-                                        println!("ENDGAME PIECE: {}", p);
-                                        e.send(p);
-                                    }
-                                    _ => if s.read().await.lifecycle == Lifecycle::Done {
-                                        break;
-                                    },
-                                }
-                            }
-                        }));
-                    }
 
                     let ones = bitfield.ones().len();
                     let percent = ones as f32 / num_pieces as f32;
