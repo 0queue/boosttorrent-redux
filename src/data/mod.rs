@@ -41,12 +41,13 @@ pub struct DownloadedPiece {
 
 #[derive(Clone)]
 pub struct PeerBus {
-    pub work_tx: async_std::sync::Sender<PieceMeta>,
-    pub work_rx: async_std::sync::Receiver<PieceMeta>,
+    pub work_tx: async_std::sync::Sender<usize>,
+    pub work_rx: async_std::sync::Receiver<usize>,
     pub done_tx: Sender<DownloadedPiece>,
     pub counter_tx: Sender<Event>,
-    pub endgame_rx: broadcast::Receiver<PieceMeta>,
-    pub haves: Arc<RwLock<Vec<usize>>>
+    pub endgame_rx: broadcast::Receiver<usize>,
+    pub haves: Arc<RwLock<Vec<usize>>>,
+    pub pieces: Arc<RwLock<Vec<PieceMeta>>>
 }
 
 pub struct MessageBus {

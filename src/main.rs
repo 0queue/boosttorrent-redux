@@ -119,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("piece hash array length not a multiple of 20");
     }
 
-    let mut pieces = torrent
+    let pieces = torrent
         .get("info")
         .get("pieces")
         .bytes()
@@ -141,12 +141,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<Vec<_>>();
 
-    let pieces = {
+    let indices = {
         use rand::seq::SliceRandom;
 
         let mut rng = rand::thread_rng();
-        pieces.shuffle(&mut rng);
-        pieces
+        let mut indices = (0..pieces.len()).into_iter().collect::<Vec<_>>();
+        indices.shuffle(&mut rng);
+        indices
     };
 
     let num_pieces = pieces.len();
@@ -154,10 +155,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (work_tx, work_rx) = async_std::sync::channel(pieces.len());
 
     let haves = Arc::new(RwLock::new(Vec::new()));
+    let pieces = Arc::new(RwLock::new(pieces));
 
     println!("Starting processing");
     let downloaded = async_std::task::block_on(async move {
-        for p in pieces.to_vec() {
+        for p in indices.to_vec() {
             work_tx.send(p).await;
         }
 
@@ -167,7 +169,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             done_tx,
             counter_tx,
             endgame_rx,
-            haves: haves.clone()
+            haves: haves.clone(),
+            pieces: pieces.clone()
         };
         let shared_state = Arc::new(RwLock::new(State {
             received: 0,
@@ -187,7 +190,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             endgame_tx,
             work_rx.clone(),
             shared_state.clone(),
-            haves
+            haves,
         ));
         let counter_handle = async_std::task::spawn(counter.start());
 

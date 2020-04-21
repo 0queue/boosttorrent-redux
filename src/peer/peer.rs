@@ -77,7 +77,7 @@ impl Peer {
     pub async fn start(self) -> Result<SocketAddrV4, (SocketAddrV4, Duration)> {
         println!("{}: Starting", self.addr);
 
-        let stream = async_std::io::timeout(Duration::from_secs(5), TcpStream::connect(self.addr));
+        let stream = async_std::io::timeout(Duration::from_secs(60), TcpStream::connect(self.addr));
         let mut stream = match stream.await {
             Ok(s) => s,
             Err(e) => {
@@ -154,7 +154,7 @@ impl Peer {
                     Err(_) => None,
                     Ok(Err(_)) => {
                         if let Some(j) = job {
-                            self.peer_bus.work_tx.send(j.piece).await;
+                            self.peer_bus.work_tx.send(j.piece.index).await;
                         }
                         return Err((self.addr, keepalive.time().unwrap_or(Duration::from_millis(0))));
                     }
@@ -173,7 +173,7 @@ impl Peer {
                 Some(JobState::Failed) => {
                     let j = job.unwrap();
                     eprintln!("{}: failed to get {}", self.addr, j.piece.index);
-                    self.peer_bus.work_tx.send(j.piece).await;
+                    self.peer_bus.work_tx.send(j.piece.index).await;
                     job = None;
                 }
                 Some(JobState::Success) => {
@@ -203,7 +203,7 @@ impl Peer {
                 } else if timer.time().unwrap() > Duration::from_secs(60) {
                     let j = job.unwrap();
                     eprintln!("{}: Choked for over a minute, putting {} back", self.addr, j.piece.index);
-                    self.peer_bus.work_tx.send(j.piece).await;
+                    self.peer_bus.work_tx.send(j.piece.index).await;
                     job = None;
                 },
                 None => {}
@@ -230,16 +230,16 @@ impl Peer {
         if job.is_none() && self.state.bitfield.ones().len() > 0 && !self.state.choked {
             match t(self.peer_bus.work_rx.recv()).await {
                 Ok(Some(m)) => {
-                    if self.state.bitfield[m.index] {
-                        job.replace(create_job(m));
+                    if self.state.bitfield[m] {
+                        job.replace(create_job(self.peer_bus.pieces.read().await[m].clone()));
                     } else {
                         self.peer_bus.work_tx.send(m).await;
                     }
                 }
                 Err(_) | Ok(None) => {
                     match t(self.peer_bus.endgame_rx.recv()).await {
-                        Ok(Ok(m)) => if self.state.bitfield[m.index] {
-                            job.replace(create_job(m));
+                        Ok(Ok(m)) => if self.state.bitfield[m] {
+                            job.replace(create_job(self.peer_bus.pieces.read().await[m].clone()));
                         },
                         Ok(Err(_)) => {
                             // None in queue, time to wrap up

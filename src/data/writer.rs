@@ -10,15 +10,14 @@ use crate::broadcast;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::SharedState;
-use crate::PieceMeta;
 
 pub async fn writer(
     piece_length: i64,
     num_pieces: usize,
     file_length: usize,
     mut done_rx: Receiver<DownloadedPiece>,
-    endgame_tx: broadcast::Sender<PieceMeta>,
-    work_rx: async_std::sync::Receiver<PieceMeta>,
+    endgame_tx: broadcast::Sender<usize>,
+    work_rx: async_std::sync::Receiver<usize>,
     shared_state: SharedState,
     haves: Arc<RwLock<Vec<usize>>>,
 ) -> Vec<u8> {
@@ -48,6 +47,13 @@ pub async fn writer(
                             println!("Endgame triggered");
                             println!("  work_rx.len(): {}", work_rx.len());
                             println!("  zeroes: {:?}", bitfield.zeroes());
+                            // endgame_tx.random_send_all(bitfield.zeroes().map(|e| {
+                            //     PieceMeta {
+                            //         index: e,
+                            //         hash: [],
+                            //         length: 0
+                            //     }
+                            // }));
                         }
 
                         write.lifecycle
@@ -65,14 +71,12 @@ pub async fn writer(
                                 //   some point
                                 match timeout(Duration::from_secs(5), w.recv()).await {
                                     Ok(Some(p)) => {
-                                        println!("ENDGAME PIECE: {}", p.index);
+                                        println!("ENDGAME PIECE: {}", p);
                                         e.send(p);
                                     }
-                                    _ => {
-                                        if s.read().await.lifecycle == Lifecycle::Done {
-                                            break;
-                                        }
-                                    }
+                                    _ => if s.read().await.lifecycle == Lifecycle::Done {
+                                        break;
+                                    },
                                 }
                             }
                         }));

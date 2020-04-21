@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use flume::RecvError;
+use rand::seq::SliceRandom;
 
 #[derive(Clone)]
 pub struct Sender<T: Clone> {
@@ -17,6 +18,26 @@ where
             .write()
             .unwrap()
             .retain(|tx| tx.send(t.clone()).is_ok());
+    }
+
+    pub fn random_send_all(&self, ts: &[T]) {
+        let mut ts = ts.to_vec();
+
+        let mut rand = rand::thread_rng();
+
+        self.senders
+            .write()
+            .unwrap()
+            .retain(|tx| {
+                ts.shuffle(&mut rand);
+                for t in &ts {
+                    if !tx.send(t.clone()).is_ok() {
+                        return false
+                    }
+                }
+
+                true
+            });
     }
 }
 
