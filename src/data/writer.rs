@@ -1,14 +1,16 @@
 use std::time::Duration;
 
 use async_std::future::timeout;
+use async_std::sync::Arc;
+use async_std::sync::RwLock;
 use flume::Receiver;
 
+use crate::bitvec_ext::BitVecExt;
 use crate::broadcast;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::SharedState;
 use crate::PieceMeta;
-use crate::bitvec_ext::BitVecExt;
 
 pub async fn writer(
     piece_length: i64,
@@ -18,6 +20,7 @@ pub async fn writer(
     endgame_tx: broadcast::Sender<PieceMeta>,
     work_rx: async_std::sync::Receiver<PieceMeta>,
     shared_state: SharedState,
+    haves: Arc<RwLock<Vec<usize>>>,
 ) -> Vec<u8> {
     println!("Starting finished work receiver");
     let mut bitfield = bit_vec::BitVec::from_elem(num_pieces, false);
@@ -33,6 +36,8 @@ pub async fn writer(
 
                     // update state
                     bitfield.set(p.index, true);
+                    haves.write().await.push(p.index);
+
                     let lifecycle = {
                         let mut write = shared_state.write().await;
                         write.received += 1;
@@ -55,6 +60,9 @@ pub async fn writer(
                         forward_handle = Some(async_std::task::spawn(async move {
                             println!("Starting endgame mode");
                             loop {
+                                // TODO if an endgame peer dies with an endgame piece it gets
+                                //   rebroadcasted... should switch to a zeroes approach at
+                                //   some point
                                 match timeout(Duration::from_secs(5), w.recv()).await {
                                     Ok(Some(p)) => {
                                         println!("ENDGAME PIECE: {}", p.index);

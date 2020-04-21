@@ -38,6 +38,7 @@ struct PeerState {
     choked: bool,
     interested: bool,
     bitfield: BitVec,
+    haves_idx: usize,
 }
 
 struct Job {
@@ -67,6 +68,7 @@ impl Peer {
                 choked: true,
                 interested: false,
                 bitfield: bit_vec::BitVec::from_elem(num_pieces, false),
+                haves_idx: 0,
             },
             shared_state,
         }
@@ -176,8 +178,8 @@ impl Peer {
                 }
                 Some(JobState::Success) => {
                     let j = job.unwrap();
-                    msg_bus.send(Message::Have(j.piece.index as u32));
-                    keepalive.start();
+                    // msg_bus.send(Message::Have(j.piece.index as u32));
+                    // keepalive.start();
                     self.peer_bus.counter_tx.send(Event::RecvPiece(self.addr)).unwrap();
                     self.peer_bus
                         .done_tx
@@ -206,6 +208,12 @@ impl Peer {
                 },
                 None => {}
             }
+
+            for have in self.get_haves().await {
+                msg_bus.send(Message::Have(have as u32));
+            }
+
+            keepalive.start();
 
             if let Some(d) = keepalive.time() {
                 if d > Duration::from_secs(90) {
@@ -282,6 +290,23 @@ impl Peer {
             Message::Cancel(_) => { /*TODO*/ }
             Message::KeepAlive => { /*nothing*/ }
         }
+    }
+
+    async fn get_haves(&mut self) -> Vec<usize> {
+        let read_guard = self.peer_bus.haves.read().await;
+        let end = read_guard.len();
+        let haves = if self.state.haves_idx < end {
+            read_guard[self.state.haves_idx..end].to_vec()
+        } else {
+            vec![]
+        };
+
+        self.state.haves_idx = end;
+        // if haves.len() > 0 {
+        //     println!("{}: sending {} haves", self.addr, haves.len());
+        // }
+
+        haves
     }
 }
 

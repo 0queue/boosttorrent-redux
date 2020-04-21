@@ -46,6 +46,7 @@ pub struct PeerBus {
     pub done_tx: Sender<DownloadedPiece>,
     pub counter_tx: Sender<Event>,
     pub endgame_rx: broadcast::Receiver<PieceMeta>,
+    pub haves: Arc<RwLock<Vec<usize>>>
 }
 
 pub struct MessageBus {

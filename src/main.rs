@@ -59,7 +59,7 @@ struct Args {
 //  - simple spawner
 
 // TODO larger features:
-//  - proper have broadcasting
+//  * proper have broadcasting
 //  - bitfield broadcasting
 //  - cache on disk, not memory
 //  - endgame: cancel messages
@@ -153,6 +153,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (work_tx, work_rx) = async_std::sync::channel(pieces.len());
 
+    let haves = Arc::new(RwLock::new(Vec::new()));
+
     println!("Starting processing");
     let downloaded = async_std::task::block_on(async move {
         for p in pieces.to_vec() {
@@ -165,6 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             done_tx,
             counter_tx,
             endgame_rx,
+            haves: haves.clone()
         };
         let shared_state = Arc::new(RwLock::new(State {
             received: 0,
@@ -184,6 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             endgame_tx,
             work_rx.clone(),
             shared_state.clone(),
+            haves
         ));
         let counter_handle = async_std::task::spawn(counter.start());
 

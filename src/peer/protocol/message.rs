@@ -31,7 +31,7 @@ async fn t<F, T>(fut: F) -> io::Result<T>
 where
     F: Future<Output = io::Result<T>>,
 {
-    timeout(Duration::from_secs(15), fut).await
+    timeout(Duration::from_secs(90), fut).await
 }
 
 impl std::fmt::Display for Message {
@@ -66,7 +66,7 @@ impl Message {
     pub async fn from(stream: &mut ReadHalf<TcpStream>) -> Result<Message, &'static str> {
         let length = loop {
             let mut length_prefix = [0u8; 4];
-            if let Err(_) = t(stream.read_exact(&mut length_prefix)).await {
+            if let Err(x) = t(stream.read_exact(&mut length_prefix)).await {
                 return Err("failed to receive prefix");
             };
             let length = BigEndian::read_u32(&length_prefix[0..]);
