@@ -1,14 +1,11 @@
 use async_std::net::SocketAddrV4;
 
-pub use protocol::message::Message;
-
 use crate::data::PeerBus;
 use crate::data::SharedState;
 use crate::peer::peer::Peer;
 use util::ext::duration::DurationExt;
 
 mod peer;
-mod protocol;
 
 /// a task to keep N peers live
 pub async fn spawner(

@@ -8,10 +8,11 @@ use byteorder::ByteOrder;
 use futures::io::ReadHalf;
 use futures::io::WriteHalf;
 use futures::AsyncWriteExt;
-use futures::{AsyncReadExt, Future};
+use futures::AsyncReadExt;
+use futures::Future;
 
-use crate::peer::protocol::BlockRequest;
-use crate::peer::protocol::BlockResponse;
+use crate::protocol::BlockRequest;
+use crate::protocol::BlockResponse;
 
 #[derive(Debug)]
 pub enum Message {

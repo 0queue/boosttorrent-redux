@@ -13,7 +13,7 @@ async fn t<F, T>(fut: F) -> io::Result<T>
 where
     F: Future<Output = io::Result<T>>,
 {
-    timeout(Duration::from_secs(5), fut).await
+    timeout(Duration::from_secs(30), fut).await
 }
 
 pub async fn handshake(

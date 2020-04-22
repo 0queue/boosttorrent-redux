@@ -32,6 +32,7 @@ mod counter;
 mod data;
 mod peer;
 mod tracker;
+mod protocol;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -44,14 +45,8 @@ struct Args {
 }
 
 // TODO small features to add:
-//  * built in timing
-//  * hash checking
 //  - graceful ctrl c exits
 //  - colored output (better logs in general)
-//  * bitvec ext trait to add ones() and zeroes()
-//  * unlimited peers
-//  * correct reports to the tracker at the end
-//  * add keep alives so that when the last peer dies with the last piece we can actually finish downloading
 //  - simple spawner
 
 // TODO larger features:

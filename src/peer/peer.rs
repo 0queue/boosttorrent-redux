@@ -18,9 +18,9 @@ use crate::data::Lifecycle;
 use crate::data::MessageBus;
 use crate::data::PeerBus;
 use crate::data::SharedState;
-use crate::peer::protocol;
-use crate::peer::protocol::BlockRequest;
-use crate::peer::protocol::message::Message;
+use crate::protocol;
+use crate::protocol::BlockRequest;
+use crate::protocol::message::Message;
 use crate::PieceMeta;
 use util::timer::Timer;
 
@@ -98,10 +98,7 @@ impl Peer {
         let (send_msg_tx, send_msg_rx) = flume::unbounded();
         let (recv_msg_tx, recv_msg_rx) = flume::unbounded();
 
-        let msg_bus = MessageBus {
-            tx: send_msg_tx,
-            rx: recv_msg_rx,
-        };
+        let msg_bus = MessageBus::new(send_msg_tx, recv_msg_rx);
 
         async_std::task::spawn(protocol::sender(stream_tx, send_msg_rx));
         async_std::task::spawn(protocol::receiver(stream_rx, recv_msg_tx));
@@ -151,13 +148,13 @@ impl Peer {
             let msg = if block {
                 match t(msg_bus.recv()).await {
                     Ok(Ok(m)) => Some(m),
-                    Err(_) => None,
                     Ok(Err(_)) => {
                         if let Some(j) = job {
                             self.peer_bus.work_tx.send(j.piece.index).await;
                         }
                         return Err((self.addr, keepalive.time().unwrap_or(Duration::from_millis(0))));
                     }
+                    Err(TimeoutError { .. }) => None,
                 }
             } else {
                 msg_bus.try_recv().ok()
