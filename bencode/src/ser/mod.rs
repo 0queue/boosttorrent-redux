@@ -1,4 +1,4 @@
-use crate::bencode::{compare_bytes_slice, BVal};
+use crate::{BVal, compare_bytes_slice};
 
 #[cfg(test)]
 mod test;

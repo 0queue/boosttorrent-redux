@@ -9,6 +9,8 @@ use async_std::net::SocketAddrV4;
 use async_std::path::Path;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
+use bencode::BVal;
+use bencode::de::deserialize;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use futures::AsyncWriteExt;
@@ -17,17 +19,14 @@ use md5::Md5;
 use rand::Rng;
 use structopt::StructOpt;
 
-use crate::bencode::BVal;
-use crate::bencode::de::deserialize;
 use crate::counter::Counter;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::PeerBus;
 use crate::data::State;
-use crate::timer::Timer;
 use crate::duration_ext::DurationExt;
+use crate::timer::Timer;
 
-mod bencode;
 mod broadcast;
 mod counter;
 mod data;

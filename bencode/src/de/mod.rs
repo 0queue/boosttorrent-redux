@@ -2,9 +2,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::bencode::compare_bytes_slice;
-use crate::bencode::BErr;
-use crate::bencode::BVal;
+use crate::BErr;
+use crate::BVal;
+use crate::compare_bytes_slice;
 
 #[cfg(test)]
 mod test;

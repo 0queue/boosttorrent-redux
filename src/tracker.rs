@@ -2,9 +2,8 @@ use std::io::Read;
 
 use percent_encoding::NON_ALPHANUMERIC;
 use percent_encoding::percent_encode;
-
-use crate::bencode::BVal;
-use crate::bencode::de::deserialize;
+use bencode::BVal;
+use bencode::de::deserialize;
 
 #[allow(dead_code)]
 pub enum Event {

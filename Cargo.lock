@@ -81,6 +81,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d5ca2cd0adc3f48f9e9ea5a6bbdf9ccc0bfade884847e484d452414c7ccffb3"
 
 [[package]]
+name = "bencode"
+version = "0.1.0"
+dependencies = [
+ "sha-1",
+]
+
+[[package]]
 name = "bit-vec"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -118,6 +125,7 @@ name = "boosttorrent-redux"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "bencode",
  "bit-vec",
  "byteorder",
  "flume",

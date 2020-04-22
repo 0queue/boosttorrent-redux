@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::ops::Index;
 
-use sha1::{Digest, Sha1};
+use sha1::Digest;
+use sha1::Sha1;
 
 pub mod de;
 pub mod ser;
