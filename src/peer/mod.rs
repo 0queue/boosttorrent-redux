@@ -5,7 +5,7 @@ pub use protocol::message::Message;
 use crate::data::PeerBus;
 use crate::data::SharedState;
 use crate::peer::peer::Peer;
-use crate::duration_ext::DurationExt;
+use util::ext::duration::DurationExt;
 
 mod peer;
 mod protocol;

@@ -18,23 +18,20 @@ use md5::Digest;
 use md5::Md5;
 use rand::Rng;
 use structopt::StructOpt;
+use util::ext::duration::DurationExt;
+use util::timer::Timer;
 
 use crate::counter::Counter;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::PeerBus;
 use crate::data::State;
-use crate::duration_ext::DurationExt;
-use crate::timer::Timer;
 
 mod broadcast;
 mod counter;
 mod data;
 mod peer;
 mod tracker;
-mod timer;
-mod bitvec_ext;
-mod duration_ext;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]

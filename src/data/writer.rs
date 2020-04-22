@@ -1,15 +1,12 @@
-use std::time::Duration;
-
-use async_std::future::timeout;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
 use flume::Receiver;
 
-use crate::bitvec_ext::BitVecExt;
 use crate::broadcast;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
 use crate::data::SharedState;
+use util::ext::bitvec::BitVecExt;
 
 pub async fn writer(
     piece_length: i64,

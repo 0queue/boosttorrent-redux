@@ -138,6 +138,7 @@ dependencies = [
  "sha-1",
  "structopt",
  "ureq",
+ "util",
 ]
 
 [[package]]
@@ -1192,6 +1193,13 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+]
+
+[[package]]
+name = "util"
+version = "0.1.0"
+dependencies = [
+ "bit-vec",
 ]
 
 [[package]]

@@ -10,8 +10,8 @@ use futures::AsyncReadExt;
 use futures::Future;
 use sha1::Digest;
 use sha1::Sha1;
+use util::ext::bitvec::BitVecExt;
 
-use crate::bitvec_ext::BitVecExt;
 use crate::counter::Event;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
@@ -22,7 +22,7 @@ use crate::peer::protocol;
 use crate::peer::protocol::BlockRequest;
 use crate::peer::protocol::message::Message;
 use crate::PieceMeta;
-use crate::timer::Timer;
+use util::timer::Timer;
 
 const BLOCK_LENGTH: usize = 1 << 14;
 const PIPELINE_LENGTH: usize = 15;
