@@ -7,41 +7,31 @@ use util::ext::duration::DurationExt;
 
 mod peer;
 
-/// a task to keep N peers live
 pub async fn spawner(
     mut addresses: Vec<SocketAddrV4>,
     peer_bus: PeerBus,
     shared_state: SharedState,
 ) {
     let mut active_peers = Vec::new();
-    let mut target_num_peers = addresses.len();
+    let num_pieces = shared_state.read().await.total;
 
-    loop {
-        while active_peers.len() < target_num_peers {
-            if let Some(address) = addresses.pop() {
-                let num_pieces = shared_state.read().await.total;
-                let peer = Peer::new(address, peer_bus.clone(), num_pieces, shared_state.clone());
-                active_peers.push(async_std::task::spawn(peer.start()))
-            } else {
-                break;
-            }
-        }
+    for address in addresses {
+        let peer = Peer::new(address, peer_bus.clone(), num_pieces, shared_state.clone());
+        active_peers.push(async_std::task::spawn(peer.start()))
+    }
 
-        if active_peers.len() == 0 {
-            break;
-        }
-
+    while active_peers.len() > 0 {
         let (res, _, others) = futures::future::select_all(active_peers).await;
         active_peers = others;
+
         match res {
             Result::Err((address, duration)) => println!(
-                "Peer died {}. Active {}. Remaining {}.  Keep-alive timer: {}",
+                "Peer died {}. Active {}.  Keep-alive timer: {}",
                 address,
                 active_peers.len(),
-                addresses.len(),
                 duration.time_fmt()
             ),
-            Result::Ok(_) => target_num_peers -= 1,
+            Result::Ok(addr) => println!("{}: Success", addr)
         }
     }
 }

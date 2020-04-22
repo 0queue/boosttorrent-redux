@@ -47,7 +47,7 @@ struct Args {
 // TODO small features to add:
 //  - graceful ctrl c exits
 //  - colored output (better logs in general)
-//  - simple spawner
+//  * simple spawner
 
 // TODO larger features:
 //  * proper have broadcasting
