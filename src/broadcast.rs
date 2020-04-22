@@ -13,6 +13,7 @@ impl<T> Sender<T>
 where
     T: Clone,
 {
+    #[allow(dead_code)]
     pub fn send(&self, t: T) {
         self.senders
             .write()

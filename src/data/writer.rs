@@ -33,7 +33,7 @@ pub async fn writer(
                     bitfield.set(p.index, true);
                     haves.write().await.push(p.index);
 
-                    let lifecycle = {
+                    {
                         let mut write = shared_state.write().await;
                         write.received += 1;
                         if write.received == num_pieces {
@@ -45,9 +45,7 @@ pub async fn writer(
                             println!("  zeroes: {:?}", bitfield.zeroes());
                             endgame_tx.random_send_all(&bitfield.zeroes());
                         }
-
-                        write.lifecycle
-                    };
+                    }
 
                     let ones = bitfield.ones().len();
                     let percent = ones as f32 / num_pieces as f32;

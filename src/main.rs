@@ -48,6 +48,7 @@ struct Args {
 //  - graceful ctrl c exits
 //  - colored output (better logs in general)
 //  * simple spawner
+//  - proper exit codes
 
 // TODO larger features:
 //  * proper have broadcasting

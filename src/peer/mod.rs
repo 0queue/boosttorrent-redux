@@ -6,9 +6,10 @@ use crate::peer::peer::Peer;
 use util::ext::duration::DurationExt;
 
 mod peer;
+mod message_bus;
 
 pub async fn spawner(
-    mut addresses: Vec<SocketAddrV4>,
+    addresses: Vec<SocketAddrV4>,
     peer_bus: PeerBus,
     shared_state: SharedState,
 ) {

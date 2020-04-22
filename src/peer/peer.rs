@@ -15,7 +15,6 @@ use util::ext::bitvec::BitVecExt;
 use crate::counter::Event;
 use crate::data::DownloadedPiece;
 use crate::data::Lifecycle;
-use crate::data::MessageBus;
 use crate::data::PeerBus;
 use crate::data::SharedState;
 use crate::protocol;
@@ -23,6 +22,7 @@ use crate::protocol::BlockRequest;
 use crate::protocol::message::Message;
 use crate::PieceMeta;
 use util::timer::Timer;
+use crate::peer::message_bus::MessageBus;
 
 const BLOCK_LENGTH: usize = 1 << 14;
 const PIPELINE_LENGTH: usize = 15;
