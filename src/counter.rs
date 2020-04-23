@@ -11,6 +11,7 @@ pub struct Counter<T: Hash + Eq> {
 }
 
 impl<T: Hash + Eq> Counter<T> {
+    // TODO reverse output
     pub fn new() -> (Counter<T>, Sender<T>) {
         let (tx, rx) = flume::unbounded();
         (Counter { rx }, tx)

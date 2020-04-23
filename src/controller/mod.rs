@@ -1,12 +1,15 @@
+use async_std::fs::File;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
-use crate::PieceMeta;
 use bit_vec::BitVec;
-use async_std::fs::File;
 use flume::RecvError;
-use util::ext::bitvec::BitVecExt;
-use futures::{AsyncSeekExt, AsyncWriteExt};
+use futures::AsyncSeekExt;
+use futures::AsyncWriteExt;
 use futures::io::SeekFrom;
+use util::ext::bitvec::BitVecExt;
+
+use crate::counter::Event;
+use crate::PieceMeta;
 
 #[derive(PartialEq, Copy, Clone)]
 #[allow(dead_code)]
@@ -33,7 +36,7 @@ pub struct WorkBus {
 pub struct ControllerBus {
     pub work_bus: WorkBus,
     pub done_tx: flume::Sender<DownloadedPiece>,
-    pub counter_tx: flume::Sender<DownloadedPiece>,
+    pub counter_tx: flume::Sender<Event>,
 }
 
 pub type ControllerState = Arc<RwLock<State>>;
@@ -53,11 +56,11 @@ pub struct TorrentInfo {
 
 pub async fn controller(
     mut output_file: File,
-    torrent_info: TorrentInfo,
+    torrent_info: Arc<TorrentInfo>,
     mut done_rx: flume::Receiver<DownloadedPiece>,
     work_rx: async_std::sync::Receiver<usize>,
     controller_state: ControllerState,
-) {
+) -> File {
     let mut local_bitfield = controller_state.read().await.bitfield.clone();
 
     loop {
@@ -102,4 +105,6 @@ pub async fn controller(
     }
 
     println!("Done.  Zeroes: {:?}", local_bitfield.zeroes());
+
+    output_file
 }

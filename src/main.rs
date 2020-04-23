@@ -35,16 +35,17 @@ mod tracker;
 mod protocol;
 mod peer2;
 mod controller;
+mod main2;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
-struct Args {
+pub struct Args {
     #[structopt(parse(from_os_str))]
-    torrent_file_path: PathBuf,
+    pub torrent_file_path: PathBuf,
 
     #[structopt(long)]
-    md5sum: Option<String>,
-}
+    pub md5sum: Option<String>,
+} // TODO remove pub
 
 // TODO small features to add:
 //  - graceful ctrl c exits
