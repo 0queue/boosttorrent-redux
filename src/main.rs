@@ -33,6 +33,8 @@ mod data;
 mod peer;
 mod tracker;
 mod protocol;
+mod peer2;
+mod controller;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
