@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use async_std::fs::File;
+use async_std::fs::{File, OpenOptions};
 use async_std::net::Ipv4Addr;
 use async_std::net::SocketAddrV4;
 use async_std::path::Path;
@@ -26,7 +26,8 @@ use crate::peer2;
 use crate::PieceMeta;
 use crate::tracker;
 use md5::{Md5, Digest};
-use futures::AsyncReadExt;
+use futures::{AsyncReadExt, AsyncSeekExt};
+use futures::io::SeekFrom;
 
 pub fn main2(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut timer = Timer::new();
@@ -43,7 +44,15 @@ pub fn main2(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             println!("File already exists, overwriting: {}", name);
         }
 
-        File::create(name).await.unwrap()
+        // File::create(name).await.unwrap()
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(name)
+            .await
+            .unwrap()
     });
 
     let md5sum = args.md5sum.as_ref().map(|s| hex::decode(s).unwrap());
@@ -114,7 +123,7 @@ pub fn main2(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let controller_bus = ControllerBus {
-            work_bus: WorkBus { work_tx, work_rx: work_rx.clone() },
+            work_bus: WorkBus { tx: work_tx, rx: work_rx.clone() },
             done_tx,
             counter_tx,
         };
@@ -148,7 +157,8 @@ pub fn main2(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 
         let success = if let Some(hash) = &md5sum {
             let mut hasher = Md5::new();
-            let mut buf = [0u8; 1024];
+            let mut buf = vec![0u8; 1_000_000];
+            output.seek(SeekFrom::Start(0)).await.unwrap();
 
             println!("Checking md5sum...");
             let file_hash = loop {
@@ -171,7 +181,8 @@ pub fn main2(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             true
         };
 
-        println!("Counter: {:#?}\nwork_queue.len(): {}", counted, work_rx.len());
+        println!("Counter: {:#?}", counted);
+        output.sync_all().await.unwrap();
 
         if success {
             if md5sum.is_some() {

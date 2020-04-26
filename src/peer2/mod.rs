@@ -6,6 +6,8 @@ use crate::controller::ControllerBus;
 use crate::controller::ControllerState;
 use crate::controller::TorrentInfo;
 use crate::peer2::job::Job;
+use util::ext::duration::DurationExt;
+use util::timer::Timer;
 
 mod job;
 mod download;
@@ -30,6 +32,7 @@ struct PeerState2 {
     choked: bool,
     interested: bool,
     bitfield: BitVec,
+    choke_timer: Timer,
 }
 
 impl Peer2 {
@@ -47,6 +50,7 @@ impl Peer2 {
                 choked: true,
                 interested: false,
                 bitfield: BitVec::from_elem(torrent_info.pieces.len(), false),
+                choke_timer: Timer::new(),
             },
             controller_state,
             haves_idx: 0,
@@ -80,6 +84,12 @@ pub async fn spawner(
         let (res, _, remaining) = futures::future::select_all(active_peers).await;
         active_peers = remaining;
 
-        // TODO announce death
+        match res {
+            Ok(addr) => println!("{}: Success", addr),
+            Err((addr, duration)) => println!(
+                "{}: Died (keep alive: {}).  Active {}.",
+                addr, duration.time_fmt(), active_peers.len()
+            )
+        }
     }
 }

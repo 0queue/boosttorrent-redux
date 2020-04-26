@@ -11,3 +11,13 @@ impl DurationExt for Duration {
         format!("{}:{:02}", minutes, seconds)
     }
 }
+
+pub trait SecondsExt {
+    fn secs(&self) -> Duration;
+}
+
+impl SecondsExt for u64 {
+    fn secs(&self) -> Duration {
+        Duration::from_secs(*self)
+    }
+}

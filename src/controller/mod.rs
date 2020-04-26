@@ -28,8 +28,8 @@ pub struct DownloadedPiece {
 
 #[derive(Clone)]
 pub struct WorkBus {
-    pub work_tx: async_std::sync::Sender<usize>,
-    pub work_rx: async_std::sync::Receiver<usize>,
+    pub tx: async_std::sync::Sender<usize>,
+    pub rx: async_std::sync::Receiver<usize>,
 }
 
 #[derive(Clone)]

@@ -13,8 +13,10 @@ use futures::Future;
 
 use crate::protocol::BlockRequest;
 use crate::protocol::BlockResponse;
+use std::fmt::Formatter;
 
-#[derive(Debug)]
+pub mod bus;
+
 pub enum Message {
     Choke,
     Unchoke,
@@ -60,6 +62,12 @@ impl std::fmt::Display for Message {
         };
 
         write!(f, "{}", res)
+    }
+}
+
+impl std::fmt::Debug for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 

@@ -1,18 +1,21 @@
 use crate::PieceMeta;
-use crate::protocol::BlockRequest;
+use crate::protocol::{BlockRequest, BlockResponse};
 use sha1::Sha1;
 use sha1::Digest;
 use std::cmp::min;
+use crate::controller::DownloadedPiece;
+use std::fmt::{Debug, Formatter};
 
 const BLOCK_LENGTH: usize = 1 << 14;
 
 pub struct Job {
-    piece: PieceMeta,
+    pub piece: PieceMeta,
     blocks: Vec<BlockRequest>,
-    data: Vec<u8>,
-    in_flight: Vec<BlockRequest>,
+    pub data: Vec<u8>,
+    pub in_flight: Vec<BlockRequest>,
 }
 
+#[derive(Debug)]
 pub enum JobState {
     InProgress,
     Failed,
@@ -30,6 +33,31 @@ impl Job {
         } else {
             JobState::Failed
         }
+    }
+
+    pub fn response(&mut self, response: &BlockResponse) {
+        if response.index != self.piece.index as u32 {
+            return;
+        }
+
+        let start = response.begin as usize;
+        let end = start + response.data.len();
+        self.data[start..end].copy_from_slice(&response.data);
+        self.in_flight.retain(|e| e.begin != response.begin);
+    }
+
+    pub fn cancel(&mut self) -> Vec<BlockRequest> {
+        self.in_flight.drain(0..).collect()
+    }
+
+    pub fn fill_to(&mut self, n: usize) -> Vec<BlockRequest> {
+        let mut res = vec![];
+        while self.blocks.len() > 0 && self.in_flight.len() <= n {
+            res.push(self.blocks.pop().unwrap());
+        }
+
+        self.in_flight.append(&mut res.clone());
+        res
     }
 }
 
@@ -57,7 +85,23 @@ impl From<PieceMeta> for Job {
             piece: meta,
             blocks,
             data: vec![0u8; length],
-            in_flight: Vec::new()
+            in_flight: Vec::new(),
+        }
+    }
+}
+
+impl Debug for Job {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Job {{ index: {}, in_flight: {} }}", self.piece.index, self.in_flight.len())
+    }
+}
+
+impl From<Job> for DownloadedPiece {
+    fn from(job: Job) -> Self {
+        DownloadedPiece {
+            index: job.piece.index,
+            hash: job.piece.hash,
+            data: job.data,
         }
     }
 }

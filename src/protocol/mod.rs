@@ -10,7 +10,7 @@ use crate::protocol::message::Message;
 mod handshake;
 pub mod message;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockRequest {
     pub index: u32,
     pub begin: u32,
@@ -24,9 +24,7 @@ pub struct BlockResponse {
     pub data: Vec<u8>,
 }
 
-pub enum ProtocolErr {
-
-}
+pub enum ProtocolErr {}
 
 pub async fn sender(mut stream: WriteHalf<TcpStream>, mut msg_rx: Receiver<Message>) {
     loop {
@@ -45,7 +43,7 @@ pub async fn receiver(mut stream: ReadHalf<TcpStream>, msg_tx: Sender<Result<Mes
     loop {
         let msg = match Message::from(&mut stream).await {
             Ok(m) => m,
-            Err(_) => return, // todo trace logs?
+            Err(_) => return, // TODO send a protocol error
         };
 
         if let Err(_) = msg_tx.send(Ok(msg)) {
