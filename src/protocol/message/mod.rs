@@ -1,3 +1,4 @@
+use std::fmt::Formatter;
 use std::io;
 use std::time::Duration;
 
@@ -5,15 +6,14 @@ use async_std::io::timeout;
 use async_std::net::TcpStream;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
+use futures::AsyncReadExt;
+use futures::AsyncWriteExt;
+use futures::Future;
 use futures::io::ReadHalf;
 use futures::io::WriteHalf;
-use futures::AsyncWriteExt;
-use futures::AsyncReadExt;
-use futures::Future;
 
 use crate::protocol::BlockRequest;
 use crate::protocol::BlockResponse;
-use std::fmt::Formatter;
 
 pub mod bus;
 
@@ -31,8 +31,8 @@ pub enum Message {
 }
 
 async fn t<F, T>(fut: F) -> io::Result<T>
-where
-    F: Future<Output = io::Result<T>>,
+    where
+        F: Future<Output=io::Result<T>>,
 {
     timeout(Duration::from_secs(90), fut).await
 }

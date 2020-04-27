@@ -1,12 +1,13 @@
+use std::time::Duration;
+
 use flume::Receiver;
 use flume::RecvError;
 use flume::Sender;
 use flume::TryRecvError;
+use util::timer::Timer;
 
 use crate::protocol::message::Message;
 use crate::protocol::ProtocolErr;
-use util::timer::Timer;
-use std::time::Duration;
 
 pub enum MessageRecvErr {
     Protocol(ProtocolErr),

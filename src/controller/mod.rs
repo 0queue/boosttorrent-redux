@@ -2,14 +2,12 @@ use async_std::fs::File;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
 use bit_vec::BitVec;
-use flume::RecvError;
 use futures::AsyncSeekExt;
 use futures::AsyncWriteExt;
 use futures::io::SeekFrom;
 use util::ext::bitvec::BitVecExt;
 
 use crate::counter::Event;
-use crate::PieceMeta;
 
 #[derive(PartialEq, Copy, Clone)]
 #[allow(dead_code)]
@@ -17,6 +15,13 @@ pub enum Lifecycle {
     Downloading,
     Endgame,
     Done,
+}
+
+#[derive(Debug, Clone)]
+pub struct PieceMeta {
+    pub index: usize,
+    pub hash: [u8; 20],
+    pub length: usize,
 }
 
 #[derive(Debug)]

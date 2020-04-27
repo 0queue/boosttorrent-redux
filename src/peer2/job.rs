@@ -1,10 +1,14 @@
-use crate::PieceMeta;
-use crate::protocol::{BlockRequest, BlockResponse};
-use sha1::Sha1;
-use sha1::Digest;
 use std::cmp::min;
+use std::fmt::Debug;
+use std::fmt::Formatter;
+
+use sha1::Digest;
+use sha1::Sha1;
+
 use crate::controller::DownloadedPiece;
-use std::fmt::{Debug, Formatter};
+use crate::controller::PieceMeta;
+use crate::protocol::BlockRequest;
+use crate::protocol::BlockResponse;
 
 const BLOCK_LENGTH: usize = 1 << 14;
 

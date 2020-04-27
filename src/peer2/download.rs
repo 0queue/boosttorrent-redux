@@ -9,7 +9,7 @@ use rand::seq::SliceRandom;
 use util::ext::bitvec::BitVecExt;
 use util::ext::duration::SecondsExt;
 
-use crate::controller::{DownloadedPiece, Lifecycle};
+use crate::controller::Lifecycle;
 use crate::counter::Event;
 use crate::counter::Event::ReqPiece;
 use crate::peer2::job::JobState;
@@ -151,7 +151,7 @@ impl Peer2 {
 
                     return Err((self.addr, msg_bus.last_sent().unwrap_or(0.secs())));
                 }
-                Err(x) => None
+                Err(TimeoutError { .. }) => None
             }
         } else {
             msg_bus.try_recv().ok()
@@ -180,7 +180,7 @@ impl Peer2 {
             Message::NotInterested => self.peer_state.interested = false,
             Message::Have(i) => self.peer_state.bitfield.set(i as usize, true),
             Message::Bitfield(bitfield) => self.peer_state.bitfield = bitfield,
-            Message::Request(req) => {
+            Message::Request(_req) => {
                 // TODO
                 self.controller_bus.counter_tx.send(ReqPiece(self.addr)).unwrap();
             }
@@ -210,6 +210,7 @@ impl Peer2 {
         let cur = self.job.as_ref().map(|j| j.piece.index);
 
         if cur == Some(have) {
+            println!("{}: cancelling {}", self.addr, have);
             self.job.take().unwrap().cancel()
         } else {
             vec![]

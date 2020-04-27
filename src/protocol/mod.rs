@@ -5,6 +5,7 @@ use futures::io::ReadHalf;
 use futures::io::WriteHalf;
 
 pub use handshake::handshake;
+
 use crate::protocol::message::Message;
 
 mod handshake;

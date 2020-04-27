@@ -10,8 +10,8 @@ use futures::Future;
 pub const PROTOCOL: &[u8; 20] = b"\x13BitTorrent protocol";
 
 async fn t<F, T>(fut: F) -> io::Result<T>
-where
-    F: Future<Output = io::Result<T>>,
+    where
+        F: Future<Output=io::Result<T>>,
 {
     timeout(Duration::from_secs(30), fut).await
 }

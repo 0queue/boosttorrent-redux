@@ -1,13 +1,13 @@
 use async_std::net::SocketAddrV4;
 use async_std::sync::Arc;
 use bit_vec::BitVec;
+use util::ext::duration::DurationExt;
+use util::timer::Timer;
 
 use crate::controller::ControllerBus;
 use crate::controller::ControllerState;
 use crate::controller::TorrentInfo;
 use crate::peer2::job::Job;
-use util::ext::duration::DurationExt;
-use util::timer::Timer;
 
 mod job;
 mod download;
