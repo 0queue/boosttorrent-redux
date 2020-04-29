@@ -34,7 +34,7 @@ mod counter;
 mod tracker;
 mod protocol;
 mod controller;
-mod peer2;
+mod peer;
 
 #[derive(Debug, StructOpt)]
 #[structopt()]
@@ -163,7 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lifecycle: Lifecycle::Downloading,
         }));
 
-        let spawner_handle = async_std::task::spawn(peer2::spawner(
+        let spawner_handle = async_std::task::spawn(peer::spawner(
             addresses,
             torrent_info.clone(),
             controller_bus,

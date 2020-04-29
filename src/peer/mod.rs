@@ -7,7 +7,7 @@ use util::timer::Timer;
 use crate::controller::ControllerBus;
 use crate::controller::ControllerState;
 use crate::controller::TorrentInfo;
-use crate::peer2::job::Job;
+use crate::peer::job::Job;
 
 mod job;
 mod download;
