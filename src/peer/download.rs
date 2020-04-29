@@ -13,15 +13,16 @@ use crate::controller::Lifecycle;
 use crate::counter::Event;
 use crate::counter::Event::ReqPiece;
 use crate::peer::job::JobState;
-use crate::peer::Peer2;
+use crate::peer::Peer;
 use crate::protocol;
 use crate::protocol::BlockRequest;
 use crate::protocol::message::bus::MessageBus;
 use crate::protocol::message::Message;
+use std::sync::atomic::Ordering;
 
 const PIPELINE_LENGTH: usize = 15;
 
-impl Peer2 {
+impl Peer {
     pub async fn start(mut self) -> Result<SocketAddrV4, (SocketAddrV4, Duration)> {
         println!("{}: starting", self.addr);
 
@@ -65,7 +66,7 @@ impl Peer2 {
 
     async fn main(mut self, mut msg_bus: MessageBus) -> Result<SocketAddrV4, (SocketAddrV4, Duration)> {
         loop {
-            if self.controller_state.read().await.lifecycle == Lifecycle::Done {
+            if self.controller_state.read().await.lifecycle == Lifecycle::Done || !self.running_flag.load(Ordering::SeqCst) {
                 return Ok(self.addr);
             }
 

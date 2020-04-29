@@ -29,6 +29,7 @@ use crate::controller::State;
 use crate::controller::TorrentInfo;
 use crate::controller::WorkBus;
 use crate::counter::Counter;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 mod counter;
 mod tracker;
@@ -48,17 +49,20 @@ pub struct Args {
 
 
 // TODO small features to add:
-//  - graceful ctrl c exits
 //  - colored output (better logs in general)
-//  * simple spawner
 //  - proper exit codes
 
 // TODO larger features:
-//  * proper have broadcasting
 //  - bitfield broadcasting
-//  * cache on disk, not memory
-//  * endgame: cancel messages
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let running_flag = Arc::new(AtomicBool::new(true));
+    {
+        let r = running_flag.clone();
+        ctrlc::set_handler(move || {
+            r.store(false, Ordering::SeqCst);
+        }).unwrap();
+    }
+
     let args: Args = Args::from_args();
     let mut timer = Timer::new();
     timer.start();
@@ -166,6 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let spawner_handle = async_std::task::spawn(peer::spawner(
             addresses,
             torrent_info.clone(),
+            running_flag.clone(),
             controller_bus,
             controller_state.clone(),
         ));
