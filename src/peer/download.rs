@@ -104,7 +104,7 @@ impl Peer {
 
     /// try once to get a job from either the work queue or in endgame mode
     async fn get_job(&mut self) {
-        if self.job.is_some() || self.peer_state.bitfield.ones().len() == 0 || self.peer_state.choked {
+        if self.job.is_some() || self.peer_state.bitfield.ones().is_empty() || self.peer_state.choked {
             return;
         }
 
@@ -141,7 +141,7 @@ impl Peer {
         //  - there are requests we are waiting on the response for
         //  - there is no job? not sure about that one TODO
         //  - we are choked (wait for unchoke)
-        let block = self.job.as_ref().map(|j| j.in_flight.len() > 0).unwrap_or(true) || self.peer_state.choked;
+        let block = self.job.as_ref().map(|j| !j.in_flight.is_empty()).unwrap_or(true) || self.peer_state.choked;
         let msg = if block {
             match future::timeout(5.secs(), msg_bus.recv()).await {
                 Ok(Ok(msg)) => Some(msg),
@@ -150,7 +150,7 @@ impl Peer {
                         self.controller_bus.work_bus.tx.send(j.piece.index).await;
                     }
 
-                    return Err((self.addr, msg_bus.last_sent().unwrap_or(0.secs())));
+                    return Err((self.addr, msg_bus.last_sent().unwrap_or_else(|| 0.secs())));
                 }
                 Err(TimeoutError { .. }) => None
             }

@@ -1,6 +1,7 @@
 use std::time::Duration;
 use std::time::Instant;
 
+#[derive(Default)]
 pub struct Timer {
     start: Option<Instant>
 }

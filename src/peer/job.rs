@@ -28,7 +28,7 @@ pub enum JobState {
 
 impl Job {
     pub fn state(&self) -> JobState {
-        if self.in_flight.len() > 0 || self.blocks.len() > 0 {
+        if !self.in_flight.is_empty() || !self.blocks.is_empty() {
             return JobState::InProgress;
         }
 
@@ -56,7 +56,7 @@ impl Job {
 
     pub fn fill_to(&mut self, n: usize) -> Vec<BlockRequest> {
         let mut res = vec![];
-        while self.blocks.len() > 0 && self.in_flight.len() <= n {
+        while !self.blocks.is_empty() && self.in_flight.len() <= n {
             res.push(self.blocks.pop().unwrap());
         }
 

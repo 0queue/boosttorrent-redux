@@ -16,7 +16,7 @@ pub fn serialize(bval: &BVal) -> Vec<u8> {
         BVal::Integer(i) => res.append(&mut format!("i{}e", i).as_bytes().to_vec()),
         BVal::List(l) => {
             res.push(b'l');
-            l.into_iter().for_each(|e| {
+            l.iter().for_each(|e| {
                 res.append(&mut serialize(e));
             });
             res.push(b'e');

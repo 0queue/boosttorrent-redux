@@ -34,7 +34,7 @@ pub async fn sender(mut stream: WriteHalf<TcpStream>, mut msg_rx: Receiver<Messa
             Err(_) => return,
         };
 
-        if let Err(_) = msg.send(&mut stream).await {
+        if msg.send(&mut stream).await.is_err() {
             return;
         }
     }
@@ -47,7 +47,7 @@ pub async fn receiver(mut stream: ReadHalf<TcpStream>, msg_tx: Sender<Result<Mes
             Err(_) => return, // TODO send a protocol error
         };
 
-        if let Err(_) = msg_tx.send(Ok(msg)) {
+        if msg_tx.send(Ok(msg)).is_err() {
             return;
         }
     }

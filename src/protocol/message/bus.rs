@@ -40,14 +40,14 @@ impl MessageBus {
 
     pub async fn recv(&mut self) -> Result<Message, MessageRecvErr> {
         match self.rx.recv_async().await {
-            Ok(r) => r.map_err(|e| MessageRecvErr::Protocol(e)),
+            Ok(r) => r.map_err(MessageRecvErr::Protocol),
             Err(e) => Err(MessageRecvErr::Channel(e)),
         }
     }
 
     pub fn try_recv(&mut self) -> Result<Message, TryMessageRecvErr> {
         match self.rx.try_recv() {
-            Ok(r) => r.map_err(|e| TryMessageRecvErr::Protocol(e)),
+            Ok(r) => r.map_err(TryMessageRecvErr::Protocol),
             Err(e) => Err(TryMessageRecvErr::Channel(e)),
         }
     }

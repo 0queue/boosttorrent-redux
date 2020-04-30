@@ -10,7 +10,7 @@ use crate::compare_bytes_slice;
 mod test;
 
 pub fn deserialize(bytes: &[u8]) -> Result<BVal, BErr> {
-    parse_val(&mut bytes.clone().to_vec())
+    parse_val(&mut bytes.to_vec())
 }
 
 fn parse_val(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
@@ -71,7 +71,7 @@ fn parse_list(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
     }
 
     let mut res: Vec<BVal> = Vec::new();
-    while stack.len() > 0 && stack[0] != b'e' {
+    while !stack.is_empty() && stack[0] != b'e' {
         res.push(parse_val(stack)?);
     }
 
@@ -89,7 +89,7 @@ fn parse_dict(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
 
     let mut last_key: Option<Vec<u8>> = None;
     let mut res: HashMap<Vec<u8>, BVal> = HashMap::new();
-    while stack.len() > 0 && stack[0] != b'e' {
+    while !stack.is_empty() && stack[0] != b'e' {
         let key = match parse_string(stack)? {
             BVal::String(s) => s,
             _ => return Err(BErr::InvalidDict),
@@ -116,7 +116,7 @@ fn parse_dict(stack: &mut Vec<u8>) -> Result<BVal, BErr> {
 
 fn parse_integer_literal(stack: &mut Vec<u8>) -> Result<u64, BErr> {
     let mut buf = String::new();
-    while stack.len() > 0 && (b'0'..=b'9').contains(&stack[0]) {
+    while !stack.is_empty() && (b'0'..=b'9').contains(&stack[0]) {
         buf.push(stack.remove(0) as char) // valid utf-8 because of range check
     }
 

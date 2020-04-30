@@ -86,7 +86,7 @@ pub async fn spawner(
         active_peers.push(async_std::task::spawn(peer.start()))
     }
 
-    while active_peers.len() > 0 {
+    while active_peers.is_empty() {
         let (res, _, remaining) = futures::future::select_all(active_peers).await;
         active_peers = remaining;
 

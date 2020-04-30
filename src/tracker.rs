@@ -49,12 +49,8 @@ pub fn announce(torrent: &BVal, id: &[u8; 20], port: u16, event: Event) -> BVal 
 
     println!("Announcing: {:?}", request);
 
-    let response = {
-        let mut buf = Vec::new();
-        request.call().into_reader().read_to_end(&mut buf).unwrap();
-        let raw_response = String::from_utf8_lossy(&buf);
-        deserialize(&buf).map_err(|_| raw_response).unwrap()
-    };
-
-    response
+    let mut buf = Vec::new();
+    request.call().into_reader().read_to_end(&mut buf).unwrap();
+    let raw_response = String::from_utf8_lossy(&buf);
+    deserialize(&buf).map_err(|_| raw_response).unwrap()
 }

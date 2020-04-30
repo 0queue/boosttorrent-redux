@@ -73,21 +73,21 @@ impl std::fmt::Debug for Message {
 
 impl Message {
     pub async fn from(stream: &mut ReadHalf<TcpStream>) -> Result<Message, &'static str> {
-        let length = loop {
+        let length = {
             let mut length_prefix = [0u8; 4];
-            if let Err(_) = t(stream.read_exact(&mut length_prefix)).await {
+            if t(stream.read_exact(&mut length_prefix)).await.is_err() {
                 return Err("failed to receive prefix");
-            };
+            }
             let length = BigEndian::read_u32(&length_prefix[0..]);
             if length != 0 {
-                break length;
+                length
             } else {
                 return Ok(Message::KeepAlive);
             }
         };
 
         let mut body = vec![0u8; length as usize];
-        if let Err(_) = t(stream.read_exact(&mut body)).await {
+        if t(stream.read_exact(&mut body)).await.is_err() {
             return Err("failed to receive body");
         };
 
@@ -167,7 +167,7 @@ impl Message {
             }
         };
 
-        if let Err(_) = timeout(Duration::from_secs(30), stream.write_all(&buf)).await {
+        if timeout(Duration::from_secs(30), stream.write_all(&buf)).await.is_err() {
             return Err("failed to send");
         }
 
