@@ -2,12 +2,15 @@ use async_std::fs::File;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
 use bit_vec::BitVec;
+use futures::AsyncReadExt;
 use futures::AsyncSeekExt;
 use futures::AsyncWriteExt;
 use futures::io::SeekFrom;
 use util::ext::bitvec::BitVecExt;
 
 use crate::counter::Event;
+use crate::protocol::BlockRequest;
+use crate::protocol::BlockResponse;
 
 #[derive(PartialEq, Copy, Clone)]
 #[allow(dead_code)]
@@ -50,6 +53,42 @@ pub struct State {
     pub haves: Vec<usize>,
     pub bitfield: BitVec,
     pub lifecycle: Lifecycle,
+    file: File,
+    piece_length: usize,
+}
+
+impl State {
+    pub fn new(num_pieces: usize, piece_length: usize, file: File) -> State {
+        State {
+            haves: vec![],
+            bitfield: BitVec::from_elem(num_pieces, false),
+            lifecycle: Lifecycle::Downloading,
+            file,
+            piece_length,
+        }
+    }
+
+    pub fn take_file(self) -> File {
+        self.file
+    }
+
+    pub async fn try_read_request(&mut self, block_request: &BlockRequest) -> Option<BlockResponse> {
+        // let mut buf = vec![0u8; block_request.length as usize];
+        let mut block_response = BlockResponse {
+            index: block_request.index,
+            begin: block_request.begin,
+            data: vec![0u8; block_request.length as usize],
+        };
+
+        if !self.bitfield.get(block_request.index as usize).unwrap_or(false) {
+            return None;
+        }
+
+        let start = (block_request.index * self.piece_length as u32 + block_request.begin) as u64;
+        self.file.seek(SeekFrom::Start(start)).await.unwrap();
+        self.file.read_exact(&mut block_response.data).await.unwrap();
+        Some(block_response)
+    }
 }
 
 pub struct TorrentInfo {

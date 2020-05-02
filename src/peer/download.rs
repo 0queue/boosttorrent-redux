@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use async_std::future;
@@ -16,9 +17,9 @@ use crate::peer::job::JobState;
 use crate::peer::Peer;
 use crate::protocol;
 use crate::protocol::BlockRequest;
+use crate::protocol::BlockResponse;
 use crate::protocol::message::bus::MessageBus;
 use crate::protocol::message::Message;
-use std::sync::atomic::Ordering;
 
 const PIPELINE_LENGTH: usize = 15;
 
@@ -158,16 +159,16 @@ impl Peer {
             msg_bus.try_recv().ok()
         };
 
-        // println!("{}: handling msg {:?} (blocked {})", self.addr, msg, block);
-
         if let Some(msg) = msg {
-            self.update(msg).await;
+            if let Some(response) = self.update(msg).await {
+                msg_bus.send(Message::Piece(response))
+            }
         }
 
         Ok(())
     }
 
-    async fn update(&mut self, msg: Message) {
+    async fn update(&mut self, msg: Message) -> Option<BlockResponse> {
         match msg {
             Message::Choke => {
                 self.peer_state.choked = true;
@@ -181,9 +182,9 @@ impl Peer {
             Message::NotInterested => self.peer_state.interested = false,
             Message::Have(i) => self.peer_state.bitfield.set(i as usize, true),
             Message::Bitfield(bitfield) => self.peer_state.bitfield = bitfield,
-            Message::Request(_req) => {
-                // TODO
+            Message::Request(req) => {
                 self.controller_bus.counter_tx.send(ReqPiece(self.addr)).unwrap();
+                return self.controller_state.write().await.try_read_request(&req).await;
             }
             Message::Piece(response) => if let Some(ref mut j) = self.job {
                 j.response(&response);
@@ -191,6 +192,8 @@ impl Peer {
             Message::Cancel(_) => { /* TODO */ }
             Message::KeepAlive => { /* nothing */ }
         }
+
+        None
     }
 
     async fn get_haves(&mut self) -> Vec<usize> {

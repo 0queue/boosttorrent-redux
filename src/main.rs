@@ -8,7 +8,6 @@ use async_std::path::Path;
 use async_std::sync::Arc;
 use async_std::sync::RwLock;
 use bencode::BVal;
-use bit_vec::BitVec;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use futures::AsyncReadExt;
@@ -23,7 +22,6 @@ use util::timer::Timer;
 
 use crate::controller::controller;
 use crate::controller::ControllerBus;
-use crate::controller::Lifecycle;
 use crate::controller::PieceMeta;
 use crate::controller::State;
 use crate::controller::TorrentInfo;
@@ -54,6 +52,7 @@ pub struct Args {
 
 // TODO larger features:
 //  - bitfield broadcasting
+//  - connection listener/keep alive on download finish
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let running_flag = Arc::new(AtomicBool::new(true));
     {
@@ -72,20 +71,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bencode::de::deserialize(&contents)?
     };
 
-    let output = async_std::task::block_on(async {
+    let (output, input) = async_std::task::block_on(async {
         let name = torrent["info"]["name"].string();
         if Path::new(&name).exists().await {
             println!("File already exists, overwriting: {}", name);
         }
 
-        OpenOptions::new()
-            .read(true)
+        let output = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
+            .open(name.clone())
+            .await
+            .unwrap();
+
+        let input = OpenOptions::new()
+            .read(true)
             .open(name)
             .await
-            .unwrap()
+            .unwrap();
+
+        (output, input)
     });
 
     let md5sum = args.md5sum.as_ref().map(|s| hex::decode(s).unwrap());
@@ -161,11 +167,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             counter_tx,
         };
 
-        let controller_state = Arc::new(RwLock::new(State {
-            haves: vec![],
-            bitfield: BitVec::from_elem(torrent_info.pieces.len(), false),
-            lifecycle: Lifecycle::Downloading,
-        }));
+        let controller_state = Arc::new(RwLock::new(State::new(
+            torrent_info.pieces.len(),
+            torrent_info.piece_length,
+            input,
+        )));
 
         let spawner_handle = async_std::task::spawn(peer::spawner(
             addresses,
@@ -195,8 +201,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output.seek(SeekFrom::Start(0)).await.unwrap();
 
             println!("Checking md5sum...");
+            let mut input = Arc::try_unwrap(controller_state).ok().unwrap().into_inner().take_file();
             let file_hash = loop {
-                let read = output.read(&mut buf).await.unwrap();
+                let read = input.read(&mut buf).await.unwrap();
                 if read == 0 {
                     break hasher.result().to_vec();
                 }
