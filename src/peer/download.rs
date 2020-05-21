@@ -47,6 +47,8 @@ impl Peer {
         async_std::task::spawn(protocol::sender(stream_tx, send_msg_rx));
         async_std::task::spawn(protocol::receiver(stream_rx, recv_msg_tx));
 
+        let bitfield = self.controller_state.read().await.bitfield.clone();
+        msg_bus.send(Message::Bitfield(bitfield));
         msg_bus.send(Message::Interested);
 
         // assume they will send a bitfield.  not strictly true though
